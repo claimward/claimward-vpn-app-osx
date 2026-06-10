@@ -38,7 +38,11 @@ func runUI(url string) {
 	w := webview.New(false)
 	defer w.Destroy()
 	w.SetTitle("Claimward")
-	w.SetSize(440, 660, webview.HintMin)
+	// HintNone sets the actual initial window size. HintMin only constrains the
+	// minimum and leaves the window at 0x0 (invisible), so use HintNone here and
+	// add a minimum separately.
+	w.SetSize(440, 660, webview.HintNone)
+	w.SetSize(360, 480, webview.HintMin)
 	w.Navigate(url)
 	w.Run()
 }
