@@ -12,7 +12,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -101,31 +100,43 @@ func (a *trayApp) onReady() {
 	}
 	refresh()
 
+	// Each menu item is handled in its own goroutine, and status refresh runs
+	// separately, so a slow/blocked helper call can never starve menu clicks.
 	go func() {
 		ticker := time.NewTicker(4 * time.Second)
 		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				refresh()
-			case <-mOpen.ClickedCh:
-				a.openDashboard()
-			case <-mConnect.ClickedCh:
-				go func() { a.connect(); refresh() }()
-			case <-mDisconnect.ClickedCh:
-				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-					defer cancel()
-					if err := a.core.Disconnect(ctx); err != nil {
-						log.Printf("disconnect: %v", err)
-					}
-					refresh()
-				}()
-			case <-mQuit.ClickedCh:
-				systray.Quit()
-				return
-			}
+		for range ticker.C {
+			refresh()
 		}
+	}()
+
+	go func() {
+		for range mOpen.ClickedCh {
+			a.openDashboard()
+		}
+	}()
+
+	go func() {
+		for range mConnect.ClickedCh {
+			a.connect()
+			refresh()
+		}
+	}()
+
+	go func() {
+		for range mDisconnect.ClickedCh {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			if err := a.core.Disconnect(ctx); err != nil {
+				log.Printf("disconnect: %v", err)
+			}
+			cancel()
+			refresh()
+		}
+	}()
+
+	go func() {
+		<-mQuit.ClickedCh
+		systray.Quit()
 	}()
 }
 
@@ -149,22 +160,23 @@ func (a *trayApp) openDashboard() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.uiCmd != nil && a.uiCmd.ProcessState == nil {
-		return // already open
+		log.Printf("dashboard already open")
+		return
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		log.Printf("executable path: %v", err)
+		log.Printf("open dashboard: executable path: %v", err)
 		return
 	}
 	cmd := exec.Command(exe, "ui", a.ui.URL())
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
-		log.Printf("open dashboard: %v", err)
+		log.Printf("open dashboard: start failed: %v", err)
 		return
 	}
 	a.uiCmd = cmd
 	go func() { _ = cmd.Wait(); a.clearUICmd() }()
-	fmt.Println("opened dashboard:", a.ui.URL())
+	log.Printf("opened dashboard window: %s", a.ui.URL())
 }
 
 func (a *trayApp) clearUICmd() {

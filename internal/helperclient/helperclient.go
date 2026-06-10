@@ -13,7 +13,6 @@ import (
 // Client talks to the helper over its Unix socket.
 type Client struct {
 	SocketPath string
-	Timeout    time.Duration
 }
 
 // New returns a Client for the given socket path (empty = default).
@@ -21,22 +20,23 @@ func New(socketPath string) *Client {
 	if socketPath == "" {
 		socketPath = hproto.DefaultSocketPath
 	}
-	return &Client{SocketPath: socketPath, Timeout: 30 * time.Second}
+	return &Client{SocketPath: socketPath}
 }
 
-// Up brings the tunnel up with the given spec.
+// Up brings the tunnel up with the given spec (tunnel setup can take a moment).
 func (c *Client) Up(spec hproto.TunnelSpec) (*hproto.Response, error) {
-	return c.call(hproto.Request{Action: hproto.ActionUp, Tunnel: &spec})
+	return c.call(30*time.Second, hproto.Request{Action: hproto.ActionUp, Tunnel: &spec})
 }
 
 // Down tears the tunnel down.
 func (c *Client) Down() (*hproto.Response, error) {
-	return c.call(hproto.Request{Action: hproto.ActionDown})
+	return c.call(15*time.Second, hproto.Request{Action: hproto.ActionDown})
 }
 
-// Status queries the helper's current state.
+// Status queries the helper's current state. Kept short so it never stalls the
+// UI's periodic status refresh.
 func (c *Client) Status() (*hproto.Response, error) {
-	return c.call(hproto.Request{Action: hproto.ActionStatus})
+	return c.call(3*time.Second, hproto.Request{Action: hproto.ActionStatus})
 }
 
 // Available reports whether the helper socket is reachable.
@@ -49,13 +49,13 @@ func (c *Client) Available() bool {
 	return true
 }
 
-func (c *Client) call(req hproto.Request) (*hproto.Response, error) {
-	conn, err := net.DialTimeout("unix", c.SocketPath, c.Timeout)
+func (c *Client) call(timeout time.Duration, req hproto.Request) (*hproto.Response, error) {
+	conn, err := net.DialTimeout("unix", c.SocketPath, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("helper not reachable at %s (is it installed and running?): %w", c.SocketPath, err)
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(c.Timeout))
+	_ = conn.SetDeadline(time.Now().Add(timeout))
 
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
