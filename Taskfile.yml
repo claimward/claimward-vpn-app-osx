@@ -109,7 +109,10 @@ tasks:
           DASH="$APP/Contents/Resources/Dashboard.app"
           mkdir -p "$DASH/Contents/MacOS"
           cp deploy/Info.dashboard.plist "$DASH/Contents/Info.plist"
-          ln -sf ../../../../MacOS/{{.APP}} "$DASH/Contents/MacOS/dashboard"
+          # A real copy (NOT a symlink): a symlink resolves back into Claimward.app
+          # and LaunchServices would attribute the process to the LSUIElement agent
+          # bundle, so the window would never come to the foreground.
+          cp bin/{{.APP}} "$DASH/Contents/MacOS/dashboard"
           echo "built $APP"
         silent: true
 
