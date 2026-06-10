@@ -21,6 +21,7 @@ import (
 
 	"fyne.io/systray"
 	"github.com/claimward/claimward-vpn-app-osx/internal/appcore"
+	"github.com/claimward/claimward-vpn-app-osx/internal/brand"
 	"github.com/claimward/claimward-vpn-app-osx/internal/uiserver"
 	webview "github.com/webview/webview_go"
 )
@@ -72,7 +73,10 @@ type trayApp struct {
 }
 
 func (a *trayApp) onReady() {
-	systray.SetTitle("Claimward")
+	// Show the brand mark in the menu bar instead of a text title. The icon is a
+	// macOS template image, so the system tints it for light/dark menu bars.
+	systray.SetTemplateIcon(brand.TrayTemplate, brand.TrayTemplate)
+	systray.SetTitle("")
 	systray.SetTooltip("Claimward VPN")
 
 	mStatus := systray.AddMenuItem("Disconnected", "Current status")
