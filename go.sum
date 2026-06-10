@@ -1,7 +1,7 @@
 fyne.io/systray v1.12.2 h1:Y8DZxgLHsVQt6rY9Zrkkg+j67S7vv/1F2viOWKPpVeA=
 fyne.io/systray v1.12.2/go.mod h1:RVwqP9nYMo7h5zViCBHri2FgjXF7H2cub7MAq4NSoLs=
-github.com/claimward/claimward-vpn-client v0.0.0-20260610111453-ffb9302b0b02 h1:zzyRDrYL/7+e0Rv6hXpQtZZQfn/KRz4vIZDqLQ8Kwvk=
-github.com/claimward/claimward-vpn-client v0.0.0-20260610111453-ffb9302b0b02/go.mod h1:GwF8PGtO09XIOPvaA4ZAPjlAQ+s63MfAoUhMhOGsIDo=
+github.com/claimward/claimward-vpn-client v0.0.0-20260610115135-acc39eaeab42 h1:1Jkg62+PpXE4/2riIs3NxOtIpWK1FSA5zzLswLwO6B0=
+github.com/claimward/claimward-vpn-client v0.0.0-20260610115135-acc39eaeab42/go.mod h1:GwF8PGtO09XIOPvaA4ZAPjlAQ+s63MfAoUhMhOGsIDo=
 github.com/coreos/go-oidc/v3 v3.18.0 h1:V9orjXynvu5wiC9SemFTWnG4F45v403aIcjWo0d41+A=
 github.com/coreos/go-oidc/v3 v3.18.0/go.mod h1:DYCf24+ncYi+XkIH97GY1+dqoRlbaSI26KVTCI9SrY4=
 github.com/go-jose/go-jose/v4 v4.1.4 h1:moDMcTHmvE6Groj34emNPLs/qtYXRVcd6S7NHbHz3kA=

@@ -59,11 +59,22 @@ CGO_ENABLED=1 go build -o bin/claimward-helper  ./cmd/claimward-helper
 ## Configure
 
 Create `~/Library/Application Support/Claimward/config.json` (or use the
-`CLAIMWARD_*` env vars):
+`CLAIMWARD_*` env vars). **GitHub is the default provider** (OAuth device flow):
 
 ```json
 {
   "server_url": "https://vpn.example.com",
+  "provider": "github",
+  "github_client_id": "Iv1.0123456789abcdef"
+}
+```
+
+To use an OIDC provider instead:
+
+```json
+{
+  "server_url": "https://vpn.example.com",
+  "provider": "oidc",
   "oidc_issuer": "https://accounts.google.com",
   "oidc_client_id": "xxxx.apps.googleusercontent.com"
 }

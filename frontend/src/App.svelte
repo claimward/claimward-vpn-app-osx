@@ -36,6 +36,7 @@
   $: connected = status && status.connected
   $: loggedIn = status && status.logged_in
   $: configOK = status && status.config_ok
+  $: deviceCode = status && status.device_user_code
 </script>
 
 <main>
@@ -71,6 +72,17 @@
 
     {#if status.email}
       <p class="muted small center">Signed in as {status.email}</p>
+    {/if}
+
+    {#if deviceCode}
+      <div class="card device">
+        <p class="muted small">To sign in, open</p>
+        <a href={status.device_verification_uri} target="_blank" rel="noreferrer">
+          {status.device_verification_uri}
+        </a>
+        <p class="muted small">and enter the code</p>
+        <div class="code">{status.device_user_code}</div>
+      </div>
     {/if}
 
     <div class="actions">
@@ -207,6 +219,17 @@
     background: transparent;
     color: #a9a9c4;
     border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .device {
+    text-align: center;
+  }
+  .device .code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    margin-top: 8px;
+    color: #fff;
   }
   .warn {
     border-color: #e0a23a55;

@@ -12,10 +12,15 @@ import (
 // are typically baked in; for development they come from a JSON file under
 // "~/Library/Application Support/Claimward/config.json" or environment overrides.
 type Config struct {
-	ServerURL    string `json:"server_url"`     // claimward-vpn-server base URL
+	ServerURL string `json:"server_url"` // claimward-vpn-server base URL
+
+	Provider       string `json:"provider"`         // "github" (default) | "oidc"
+	GitHubClientID string `json:"github_client_id"` // GitHub OAuth app client id (device flow)
+
 	OIDCIssuer   string `json:"oidc_issuer"`    // OIDC issuer (discovery)
 	OIDCClientID string `json:"oidc_client_id"` // OIDC client id
-	SocketPath   string `json:"socket_path"`    // helper socket (empty = default)
+
+	SocketPath string `json:"socket_path"` // helper socket (empty = default)
 }
 
 // LoadConfig reads config.json (if present) then applies environment overrides.
@@ -31,9 +36,14 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 	override(&c.ServerURL, "CLAIMWARD_SERVER")
+	override(&c.Provider, "CLAIMWARD_AUTH_PROVIDER")
+	override(&c.GitHubClientID, "CLAIMWARD_GITHUB_CLIENT_ID")
 	override(&c.OIDCIssuer, "CLAIMWARD_OIDC_ISSUER")
 	override(&c.OIDCClientID, "CLAIMWARD_OIDC_CLIENT_ID")
 	override(&c.SocketPath, "CLAIMWARD_HELPER_SOCKET")
+	if c.Provider == "" {
+		c.Provider = "github"
+	}
 	return c, nil
 }
 
@@ -43,11 +53,20 @@ func (c *Config) Validate() error {
 	if c.ServerURL == "" {
 		missing = append(missing, "server_url")
 	}
-	if c.OIDCIssuer == "" {
-		missing = append(missing, "oidc_issuer")
-	}
-	if c.OIDCClientID == "" {
-		missing = append(missing, "oidc_client_id")
+	switch c.Provider {
+	case "github":
+		if c.GitHubClientID == "" {
+			missing = append(missing, "github_client_id")
+		}
+	case "oidc":
+		if c.OIDCIssuer == "" {
+			missing = append(missing, "oidc_issuer")
+		}
+		if c.OIDCClientID == "" {
+			missing = append(missing, "oidc_client_id")
+		}
+	default:
+		return errors.New("invalid provider: " + c.Provider + ` (want "github" or "oidc")`)
 	}
 	if len(missing) > 0 {
 		return errors.New("missing config: " + join(missing))

@@ -1,6 +1,6 @@
 // Package appcore holds the Claimward macOS app's business logic, independent of
-// the tray and the webview UI: OIDC login, enrollment against the server, and
-// driving the privileged helper to bring the tunnel up and down.
+// the tray and the webview UI: provider login, enrollment against the server,
+// and driving the privileged helper to bring the tunnel up and down.
 package appcore
 
 import (
@@ -14,8 +14,8 @@ import (
 
 	"github.com/claimward/claimward-vpn-app-osx/internal/helperclient"
 	"github.com/claimward/claimward-vpn-app-osx/internal/hproto"
+	"github.com/claimward/claimward-vpn-client/pkg/auth"
 	"github.com/claimward/claimward-vpn-client/pkg/client"
-	"github.com/claimward/claimward-vpn-client/pkg/oidc"
 	"github.com/claimward/claimward-vpn-client/pkg/protocol"
 	"github.com/claimward/claimward-vpn-client/pkg/tokenstore"
 	"github.com/claimward/claimward-vpn-client/pkg/wgkey"
@@ -31,6 +31,9 @@ type Core struct {
 	connected bool
 	iface     string
 	assigned  string
+	// pending device-code prompt (GitHub device flow), surfaced via Status.
+	devURI  string
+	devCode string
 }
 
 // New builds a Core from config.
@@ -46,6 +49,7 @@ func New(cfg *Config) *Core {
 type Status struct {
 	ConfigOK        bool   `json:"config_ok"`
 	ConfigError     string `json:"config_error,omitempty"`
+	Provider        string `json:"provider,omitempty"`
 	LoggedIn        bool   `json:"logged_in"`
 	Email           string `json:"email,omitempty"`
 	HelperInstalled bool   `json:"helper_installed"`
@@ -53,20 +57,25 @@ type Status struct {
 	Interface       string `json:"interface,omitempty"`
 	AssignedIP      string `json:"assigned_ip,omitempty"`
 	ServerURL       string `json:"server_url,omitempty"`
+	// Device-code prompt, set while a GitHub device-flow login is in progress.
+	DeviceVerificationURI string `json:"device_verification_uri,omitempty"`
+	DeviceUserCode        string `json:"device_user_code,omitempty"`
 }
 
 // Status returns the current state.
 func (c *Core) Status() Status {
-	st := Status{ServerURL: c.cfg.ServerURL}
+	st := Status{ServerURL: c.cfg.ServerURL, Provider: c.cfg.Provider}
 	if err := c.cfg.Validate(); err != nil {
 		st.ConfigError = err.Error()
 	} else {
 		st.ConfigOK = true
 	}
 
-	if sess, _ := tokenstore.Load(); sess != nil && sess.IDToken != "" {
+	if sess, _ := tokenstore.Load(); sess != nil && sess.Bearer != "" {
 		st.LoggedIn = true
-		st.Email = emailFromIDToken(sess.IDToken)
+		if sess.BearerKind == string(auth.KindIDToken) {
+			st.Email = emailFromIDToken(sess.Bearer)
+		}
 	}
 
 	st.HelperInstalled = c.helper.Available()
@@ -81,27 +90,58 @@ func (c *Core) Status() Status {
 	if st.Connected {
 		st.AssignedIP = c.assigned
 	}
+	st.DeviceVerificationURI = c.devURI
+	st.DeviceUserCode = c.devCode
 	c.mu.Unlock()
 	return st
 }
 
-// Login runs the interactive OIDC browser flow and persists the session.
+func (c *Core) authConfig() auth.Config {
+	return auth.Config{
+		Provider:       c.cfg.Provider,
+		GitHubClientID: c.cfg.GitHubClientID,
+		OIDCIssuer:     c.cfg.OIDCIssuer,
+		OIDCClientID:   c.cfg.OIDCClientID,
+	}
+}
+
+// Login runs the interactive provider flow and persists the session. For the
+// GitHub device flow, the verification URL + user code are exposed via Status
+// while the user completes sign-in in their browser.
 func (c *Core) Login(ctx context.Context) error {
 	if err := c.cfg.Validate(); err != nil {
 		return err
 	}
-	toks, err := oidc.Login(ctx, oidc.Config{Issuer: c.cfg.OIDCIssuer, ClientID: c.cfg.OIDCClientID})
+	provider, err := auth.New(c.authConfig())
 	if err != nil {
 		return err
 	}
+
+	onPrompt := func(p auth.DevicePrompt) {
+		c.mu.Lock()
+		c.devURI, c.devCode = p.VerificationURI, p.UserCode
+		c.mu.Unlock()
+	}
+	defer func() {
+		c.mu.Lock()
+		c.devURI, c.devCode = "", ""
+		c.mu.Unlock()
+	}()
+
+	tok, err := provider.Login(ctx, onPrompt)
+	if err != nil {
+		return err
+	}
+
 	sess, _ := tokenstore.Load()
 	if sess == nil {
 		sess = &tokenstore.Session{}
 	}
-	sess.IDToken = toks.IDToken
-	sess.AccessToken = toks.AccessToken
-	sess.RefreshToken = toks.RefreshToken
-	sess.Expiry = toks.Expiry
+	sess.Provider = provider.Name()
+	sess.Bearer = tok.Value
+	sess.BearerKind = string(tok.Kind)
+	sess.RefreshToken = tok.Refresh
+	sess.Expiry = tok.Expiry
 	if sess.WGPrivateKey == "" {
 		pair, kerr := wgkey.Generate()
 		if kerr != nil {
@@ -121,7 +161,7 @@ func (c *Core) Connect(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if sess == nil || sess.IDToken == "" {
+	if sess == nil || sess.Bearer == "" {
 		return fmt.Errorf("not signed in")
 	}
 	pair, err := wgkey.ParsePrivate(sess.WGPrivateKey)
@@ -130,7 +170,7 @@ func (c *Core) Connect(ctx context.Context) error {
 	}
 
 	host, _ := os.Hostname()
-	resp, err := c.api.Enroll(ctx, sess.IDToken, pair.Public, protocol.DeviceInfo{
+	resp, err := c.api.Enroll(ctx, sess.Bearer, pair.Public, protocol.DeviceInfo{
 		Name: host, OS: "darwin", Platform: "app-osx",
 	})
 	if err != nil {
@@ -166,7 +206,7 @@ func (c *Core) Disconnect(ctx context.Context) error {
 
 	if sess, _ := tokenstore.Load(); sess != nil && sess.WGPrivateKey != "" {
 		if pair, err := wgkey.ParsePrivate(sess.WGPrivateKey); err == nil {
-			_ = c.api.Deregister(ctx, sess.IDToken, pair.Public)
+			_ = c.api.Deregister(ctx, sess.Bearer, pair.Public)
 		}
 	}
 
