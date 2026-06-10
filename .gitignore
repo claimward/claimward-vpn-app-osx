@@ -15,3 +15,6 @@ frontend/.vite/
 .DS_Store
 go.work
 go.work.sum
+
+# go-task incremental build cache
+.task/
