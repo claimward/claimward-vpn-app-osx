@@ -128,7 +128,7 @@ tasks:
       - npm --prefix frontend run dev
 
   config:init:
-    desc: Write a starter config.json (GitHub provider) if none exists
+    desc: Write a starter config.json wired to the local Dex OIDC server
     cmds:
       - cmd: |
           dir="{{.CONFIG_DIR}}"
@@ -140,12 +140,13 @@ tasks:
           mkdir -p "$dir"
           cat > "$file" <<'JSON'
           {
-            "server_url": "https://vpn.example.com",
-            "provider": "github",
-            "github_client_id": "Iv1.0123456789abcdef"
+            "server_url": "http://127.0.0.1:8080",
+            "provider": "oidc",
+            "oidc_issuer": "http://127.0.0.1:5556/dex",
+            "oidc_client_id": "claimward"
           }
           JSON
-          echo "wrote $file — edit server_url and github_client_id"
+          echo "wrote $file (OIDC via local Dex)"
         silent: true
 
   fmt:
