@@ -1,5 +1,5 @@
 # Taskfile for the Claimward macOS app.
-# Install go-task: https://taskfile.dev   (brew install go-task)
+# Install go-task: https://taskfile.dev   (pkgx install task)
 #
 # Quick start:
 #   task config:init     # write a starter config.json (edit it)

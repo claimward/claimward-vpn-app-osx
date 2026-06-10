@@ -47,7 +47,7 @@ processes; and tunnel setup needs root, which the unprivileged app must not have
 
 ## Quick start (Task)
 
-With [go-task](https://taskfile.dev) (`brew install go-task`):
+With [go-task](https://taskfile.dev) (`pkgx install task`):
 
 ```sh
 task config:init     # write a starter ~/Library/Application Support/Claimward/config.json
