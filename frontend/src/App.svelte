@@ -170,7 +170,8 @@
     box-shadow: 0 0 12px #36d27a99;
   }
   .status.off .dot {
-    background: #6b6b85;
+    background: #ff5b6b;
+    box-shadow: 0 0 12px #ff5b6b99;
   }
   .state {
     font-size: 16px;
