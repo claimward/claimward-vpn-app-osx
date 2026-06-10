@@ -1,0 +1,133 @@
+# Taskfile for the Claimward macOS app.
+# Install go-task: https://taskfile.dev   (brew install go-task)
+#
+# Quick start:
+#   task config:init     # write a starter config.json (edit it)
+#   task install-helper  # install the root helper (asks for sudo)
+#   task start           # build the Svelte UI + app and launch the tray
+version: "3"
+
+vars:
+  APP: claimward-app
+  HELPER: claimward-helper
+  BIN: bin
+  DIST: internal/uiserver/dist
+  CONFIG_DIR: "{{.HOME}}/Library/Application Support/Claimward"
+
+env:
+  CGO_ENABLED: "1" # the app links WebKit/Cocoa via webview_go + systray
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds: [task --list]
+    silent: true
+
+  deps:
+    desc: Install frontend (npm) and Go dependencies
+    cmds:
+      - npm --prefix frontend install
+      - go mod download
+
+  ui:
+    desc: Build the Svelte UI (embedded into the binary via go:embed)
+    cmds:
+      - npm --prefix frontend install
+      - npm --prefix frontend run build
+    sources:
+      - frontend/src/**/*
+      - frontend/index.html
+      - frontend/package.json
+      - frontend/vite.config.js
+      - frontend/svelte.config.js
+    generates:
+      - "{{.DIST}}/**/*"
+
+  build:app:
+    desc: Build the tray app (depends on the built UI)
+    deps: [ui]
+    cmds:
+      - go build -o {{.BIN}}/{{.APP}} ./cmd/claimward-app
+    sources:
+      - "**/*.go"
+      - "{{.DIST}}/**/*"
+    generates:
+      - "{{.BIN}}/{{.APP}}"
+
+  build:helper:
+    desc: Build the privileged helper
+    cmds:
+      - go build -o {{.BIN}}/{{.HELPER}} ./cmd/claimward-helper
+    sources:
+      - "**/*.go"
+    generates:
+      - "{{.BIN}}/{{.HELPER}}"
+
+  build:
+    desc: Build the app and the helper
+    deps: [build:app, build:helper]
+
+  install-helper:
+    desc: Install the privileged helper as a root LaunchDaemon (sudo)
+    deps: [build:helper]
+    cmds:
+      - sudo ./scripts/install-helper.sh
+
+  uninstall-helper:
+    desc: Remove the privileged helper LaunchDaemon (sudo)
+    cmds:
+      - sudo ./scripts/uninstall-helper.sh
+
+  run:
+    desc: Build and launch the tray app (foreground)
+    deps: [build:app]
+    cmds:
+      - cmd: |
+          if [ ! -S /var/run/claimward-helper.sock ]; then
+            echo "⚠️  helper socket not found — run 'task install-helper' to connect the tunnel."
+          fi
+        silent: true
+      - ./{{.BIN}}/{{.APP}}
+
+  start:
+    desc: Build the UI + app and launch it (alias for run)
+    deps: [run]
+
+  dev:ui:
+    desc: Run the Vite dev server for the Svelte UI (hot reload)
+    cmds:
+      - npm --prefix frontend run dev
+
+  config:init:
+    desc: Write a starter config.json (GitHub provider) if none exists
+    cmds:
+      - cmd: |
+          dir="{{.CONFIG_DIR}}"
+          file="$dir/config.json"
+          if [ -f "$file" ]; then
+            echo "config already exists: $file"
+            exit 0
+          fi
+          mkdir -p "$dir"
+          cat > "$file" <<'JSON'
+          {
+            "server_url": "https://vpn.example.com",
+            "provider": "github",
+            "github_client_id": "Iv1.0123456789abcdef"
+          }
+          JSON
+          echo "wrote $file — edit server_url and github_client_id"
+        silent: true
+
+  fmt:
+    desc: Format Go sources
+    cmds: [gofmt -w .]
+
+  vet:
+    desc: Vet Go sources
+    cmds: [go vet ./...]
+
+  clean:
+    desc: Remove build artifacts (keeps the committed UI dist)
+    cmds:
+      - rm -rf {{.BIN}} frontend/node_modules frontend/.vite

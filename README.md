@@ -45,7 +45,19 @@ processes; and tunnel setup needs root, which the unprivileged app must not have
 | `frontend/` | Svelte + Vite UI (builds to `internal/uiserver/dist`) |
 | `deploy/`, `scripts/` | LaunchDaemon plist + install/uninstall |
 
-## Build
+## Quick start (Task)
+
+With [go-task](https://taskfile.dev) (`brew install go-task`):
+
+```sh
+task config:init     # write a starter ~/Library/Application Support/Claimward/config.json
+task install-helper  # build + install the root helper (asks for sudo)
+task start           # build the Svelte UI + app and launch the tray
+```
+
+`task --list` shows everything (`ui`, `build`, `run`, `dev:ui`, `clean`, …).
+
+## Build (manual)
 
 ```sh
 # 1. Build the Svelte UI (embedded into the Go binary)
