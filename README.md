@@ -52,10 +52,17 @@ With [go-task](https://taskfile.dev) (`pkgx install task`):
 ```sh
 task config:init     # write a starter ~/Library/Application Support/Claimward/config.json
 task install-helper  # build + install the root helper (asks for sudo)
-task start           # build the Svelte UI + app and launch the tray
+task start:bundle    # build Claimward.app and launch it (recommended)
 ```
 
-`task --list` shows everything (`ui`, `build`, `run`, `dev:ui`, `clean`, …).
+`task --list` shows everything (`ui`, `build`, `bundle`, `run`, `dev:ui`, …).
+
+> **Run the bundle, not the bare binary.** Use **`task start:bundle`**. On
+> modern macOS a bare binary launched from a menu-bar agent can't bring its
+> window to the foreground, so the dashboard opens *behind* other windows. The
+> `.app` bundle (a menu-bar agent embedding a regular **Dashboard.app**) fixes
+> this — "Open Claimward" then activates the window properly. `task start` (bare
+> binary) is for quick dev only.
 
 ## Build (manual)
 

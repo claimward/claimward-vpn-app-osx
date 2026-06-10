@@ -93,6 +93,32 @@ tasks:
     desc: Build the UI + app and launch it (alias for run)
     deps: [run]
 
+  bundle:
+    desc: Build a Claimward.app bundle (menu-bar agent + foreground dashboard)
+    deps: [build]
+    cmds:
+      - cmd: |
+          set -e
+          APP="dist/Claimward.app"
+          rm -rf "$APP"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp bin/{{.APP}} "$APP/Contents/MacOS/{{.APP}}"
+          cp bin/{{.HELPER}} "$APP/Contents/MacOS/{{.HELPER}}"
+          cp deploy/Info.app.plist "$APP/Contents/Info.plist"
+          # Nested regular app whose window LaunchServices will foreground.
+          DASH="$APP/Contents/Resources/Dashboard.app"
+          mkdir -p "$DASH/Contents/MacOS"
+          cp deploy/Info.dashboard.plist "$DASH/Contents/Info.plist"
+          ln -sf ../../../../MacOS/{{.APP}} "$DASH/Contents/MacOS/dashboard"
+          echo "built $APP"
+        silent: true
+
+  start:bundle:
+    desc: Build the .app bundle and launch it (window comes to the foreground)
+    deps: [bundle]
+    cmds:
+      - open dist/Claimward.app
+
   dev:ui:
     desc: Run the Vite dev server for the Svelte UI (hot reload)
     cmds:
@@ -130,4 +156,4 @@ tasks:
   clean:
     desc: Remove build artifacts (keeps the committed UI dist)
     cmds:
-      - rm -rf {{.BIN}} frontend/node_modules frontend/.vite
+      - rm -rf {{.BIN}} dist frontend/node_modules frontend/.vite

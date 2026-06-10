@@ -1,5 +1,6 @@
-# Go binaries
+# Go binaries / app bundle
 /bin/
+/dist/
 *.test
 
 # Node (frontend build deps)

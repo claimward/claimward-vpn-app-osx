@@ -15,6 +15,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -155,20 +156,43 @@ func (a *trayApp) connect() {
 	}
 }
 
-// openDashboard spawns the webview subprocess (or no-ops if one is open).
+// openDashboard shows the webview window.
+//
+// When running inside a Claimward.app bundle (the supported way), it launches
+// the nested Dashboard.app via `open`, so LaunchServices activates it in the
+// foreground — a bare binary spawned from a menu-bar agent stays behind other
+// windows on modern macOS. Outside a bundle (dev `task start`) it falls back to
+// a direct exec, which may open in the background.
 func (a *trayApp) openDashboard() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.uiCmd != nil && a.uiCmd.ProcessState == nil {
-		log.Printf("dashboard already open")
-		return
-	}
+
 	exe, err := os.Executable()
 	if err != nil {
 		log.Printf("open dashboard: executable path: %v", err)
 		return
 	}
-	cmd := exec.Command(exe, "ui", a.ui.URL())
+	url := a.ui.URL()
+
+	if dash := dashboardBundle(exe); dash != "" {
+		// `open` (without -n) launches the dashboard or, if already running,
+		// just brings it to the front.
+		cmd := exec.Command("open", dash, "--args", "ui", url)
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			log.Printf("open dashboard: %v", err)
+			return
+		}
+		log.Printf("opened dashboard (bundled): %s", url)
+		return
+	}
+
+	// Dev fallback (no .app bundle): direct exec.
+	if a.uiCmd != nil && a.uiCmd.ProcessState == nil {
+		log.Printf("dashboard already open")
+		return
+	}
+	cmd := exec.Command(exe, "ui", url)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
 		log.Printf("open dashboard: start failed: %v", err)
@@ -176,7 +200,22 @@ func (a *trayApp) openDashboard() {
 	}
 	a.uiCmd = cmd
 	go func() { _ = cmd.Wait(); a.clearUICmd() }()
-	log.Printf("opened dashboard window: %s", a.ui.URL())
+	log.Printf("opened dashboard (dev, may open in background — use `task bundle`): %s", url)
+}
+
+// dashboardBundle returns the path to the nested Dashboard.app when exe lives in
+// a Claimward.app bundle, else "".
+func dashboardBundle(exe string) string {
+	macos := filepath.Dir(exe)      // …/Contents/MacOS
+	contents := filepath.Dir(macos) // …/Contents
+	if filepath.Base(contents) != "Contents" {
+		return ""
+	}
+	dash := filepath.Join(contents, "Resources", "Dashboard.app")
+	if fi, err := os.Stat(dash); err == nil && fi.IsDir() {
+		return dash
+	}
+	return ""
 }
 
 func (a *trayApp) clearUICmd() {
