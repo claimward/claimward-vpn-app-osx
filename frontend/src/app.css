@@ -1,0 +1,12 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #0d0d1c;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+* {
+  -webkit-user-drag: none;
+}

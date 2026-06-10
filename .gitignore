@@ -1,0 +1,16 @@
+# Go binaries
+/bin/
+*.test
+
+# Node (frontend build deps)
+frontend/node_modules/
+frontend/.vite/
+
+# NOTE: internal/uiserver/dist is the built Svelte UI and IS committed so the Go
+# binary embeds it without requiring a node toolchain. Regenerate with:
+#   cd frontend && npm install && npm run build
+
+# OS
+.DS_Store
+go.work
+go.work.sum
