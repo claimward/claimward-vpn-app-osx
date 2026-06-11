@@ -113,6 +113,9 @@ tasks:
           # and LaunchServices would attribute the process to the LSUIElement agent
           # bundle, so the window would never come to the foreground.
           cp bin/{{.APP}} "$DASH/Contents/MacOS/dashboard"
+          # Ad-hoc code signature (dev). Real distribution needs a Developer ID
+          # signature + notarization; ad-hoc is enough to run locally / in a VM.
+          codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || echo "warn: codesign failed (continuing)"
           echo "built $APP"
         silent: true
 
@@ -121,6 +124,28 @@ tasks:
     deps: [bundle]
     cmds:
       - open dist/Claimward.app
+
+  dmg:
+    desc: Package Claimward.app into a distributable dist/Claimward.dmg
+    deps: [bundle]
+    cmds:
+      - cmd: |
+          set -e
+          STAGE="$(mktemp -d)"
+          cp -R dist/Claimward.app "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"   # drag-to-install target
+          rm -f dist/Claimward.dmg
+          hdiutil create -volname "Claimward" -srcfolder "$STAGE" \
+            -ov -format UDZO -fs HFS+ dist/Claimward.dmg >/dev/null
+          rm -rf "$STAGE"
+          echo "built dist/Claimward.dmg ($(du -h dist/Claimward.dmg | cut -f1))"
+        silent: true
+
+  test:deploy:
+    desc: Deploy-test the DMG in a throwaway macOS Tart VM (install app + helper)
+    deps: [dmg]
+    cmds:
+      - ./scripts/test-deploy-tart.sh
 
   dev:ui:
     desc: Run the Vite dev server for the Svelte UI (hot reload)
