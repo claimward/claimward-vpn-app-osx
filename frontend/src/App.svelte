@@ -55,6 +55,14 @@
     }
   }
 
+  async function openExternal(url) {
+    try {
+      await api('GET', '/api/open?url=' + encodeURIComponent(url))
+    } catch (e) {
+      error = String(e.message || e)
+    }
+  }
+
   onMount(() => {
     refresh()
     if (location.hash === '#settings') openSettings()
@@ -66,6 +74,7 @@
   $: loggedIn = status && status.logged_in
   $: configOK = status && status.config_ok
   $: deviceCode = status && status.device_user_code
+  $: signInURL = status && status.device_verification_uri
 </script>
 
 <main>
@@ -137,14 +146,16 @@
       <p class="muted small center">Signed in as {status.email}</p>
     {/if}
 
-    {#if deviceCode}
+    {#if signInURL}
       <div class="card device">
-        <p class="muted small">To sign in, open</p>
-        <a href={status.device_verification_uri} target="_blank" rel="noreferrer">
-          {status.device_verification_uri}
-        </a>
-        <p class="muted small">and enter the code</p>
-        <div class="code">{status.device_user_code}</div>
+        <button class="primary" on:click={() => openExternal(status.device_verification_uri)}>
+          Open sign-in page
+        </button>
+        {#if deviceCode}
+          <p class="muted small">…then enter this code</p>
+          <div class="code">{status.device_user_code}</div>
+        {/if}
+        <p class="muted small break">{status.device_verification_uri}</p>
       </div>
     {/if}
 
@@ -330,6 +341,13 @@
   }
   .device {
     text-align: center;
+  }
+  .device button {
+    width: 100%;
+  }
+  .break {
+    word-break: break-all;
+    margin-top: 10px;
   }
   .device .code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

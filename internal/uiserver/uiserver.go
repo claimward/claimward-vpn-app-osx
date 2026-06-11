@@ -17,9 +17,11 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/claimward/claimward-vpn-app-osx/internal/appcore"
+	"github.com/claimward/claimward-vpn-client/pkg/browser"
 )
 
 //go:embed all:dist
@@ -51,6 +53,7 @@ func Start(core *appcore.Core) (*Server, error) {
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/status", s.guard(s.handleStatus))
 	mux.HandleFunc("/api/config", s.guard(s.handleConfig))
+	mux.HandleFunc("/api/open", s.guard(s.handleOpen))
 	mux.HandleFunc("/api/login", s.guard(s.handleLogin))
 	mux.HandleFunc("/api/connect", s.guard(s.handleConnect))
 	mux.HandleFunc("/api/disconnect", s.guard(s.handleDisconnect))
@@ -88,6 +91,21 @@ func (s *Server) guard(h http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, s.core.Status())
+}
+
+// handleOpen opens an http(s) URL in the system browser via the Go process —
+// reliable even when the webview won't open target=_blank links externally.
+func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
+	u := r.URL.Query().Get("url")
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		http.Error(w, "only http(s) URLs allowed", http.StatusBadRequest)
+		return
+	}
+	if err := browser.Open(u); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleConfig returns the current configuration (GET) or saves a new one (POST).
