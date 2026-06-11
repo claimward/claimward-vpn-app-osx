@@ -105,6 +105,7 @@ tasks:
           cp bin/{{.APP}} "$APP/Contents/MacOS/{{.APP}}"
           cp bin/{{.HELPER}} "$APP/Contents/MacOS/{{.HELPER}}"
           cp deploy/Info.app.plist "$APP/Contents/Info.plist"
+          cp deploy/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
           # Nested regular app whose window LaunchServices will foreground.
           DASH="$APP/Contents/Resources/Dashboard.app"
           mkdir -p "$DASH/Contents/MacOS"
@@ -147,6 +148,26 @@ tasks:
     deps: [dmg]
     cmds:
       - ./scripts/test-deploy-tart.sh
+
+  icon:
+    desc: Regenerate deploy/AppIcon.icns from the claimward/brand badge
+    cmds:
+      - cmd: |
+          set -e
+          tmp="$(mktemp -d)"
+          curl -sfL https://raw.githubusercontent.com/claimward/brand/main/avatar/claimward-badge.svg -o "$tmp/badge.svg"
+          pkgx rsvg-convert -w 1024 -h 1024 "$tmp/badge.svg" -o "$tmp/icon.png"
+          iset="$tmp/AppIcon.iconset"; mkdir -p "$iset"
+          for e in 16:icon_16x16 32:icon_16x16@2x 32:icon_32x32 64:icon_32x32@2x \
+                   128:icon_128x128 256:icon_128x128@2x 256:icon_256x256 512:icon_256x256@2x \
+                   512:icon_512x512 1024:icon_512x512@2x; do
+            px="${e%%:*}"; nm="${e##*:}"
+            sips -z "$px" "$px" "$tmp/icon.png" --out "$iset/$nm.png" >/dev/null
+          done
+          iconutil -c icns "$iset" -o deploy/AppIcon.icns
+          rm -rf "$tmp"
+          echo "regenerated deploy/AppIcon.icns"
+        silent: true
 
   dev:ui:
     desc: Run the Vite dev server for the Svelte UI (hot reload)
