@@ -10,15 +10,18 @@ const DefaultSocketPath = "/var/run/claimward-helper.sock"
 
 // Action values.
 const (
-	ActionUp     = "up"
-	ActionDown   = "down"
-	ActionStatus = "status"
+	ActionUp           = "up"
+	ActionDown         = "down"
+	ActionStatus       = "status"
+	ActionUpdateRoutes = "update-routes" // apply pushed routes to the live tunnel
 )
 
 // Request is sent by the app to the helper.
 type Request struct {
 	Action string      `json:"action"`
 	Tunnel *TunnelSpec `json:"tunnel,omitempty"` // required for ActionUp
+	// AllowedIPs is the new routed CIDR set for ActionUpdateRoutes.
+	AllowedIPs []string `json:"allowed_ips,omitempty"`
 }
 
 // TunnelSpec is a JSON-friendly mirror of wgtun.Config (keys as base64 strings).

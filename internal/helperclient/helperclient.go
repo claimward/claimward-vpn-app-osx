@@ -33,6 +33,11 @@ func (c *Client) Down() (*hproto.Response, error) {
 	return c.call(15*time.Second, hproto.Request{Action: hproto.ActionDown})
 }
 
+// UpdateRoutes applies a new routed CIDR set to the live tunnel.
+func (c *Client) UpdateRoutes(allowedIPs []string) (*hproto.Response, error) {
+	return c.call(15*time.Second, hproto.Request{Action: hproto.ActionUpdateRoutes, AllowedIPs: allowedIPs})
+}
+
 // Status queries the helper's current state. Kept short so it never stalls the
 // UI's periodic status refresh.
 func (c *Client) Status() (*hproto.Response, error) {

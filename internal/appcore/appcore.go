@@ -17,6 +17,7 @@ import (
 	"github.com/claimward/claimward-vpn-client/pkg/auth"
 	"github.com/claimward/claimward-vpn-client/pkg/client"
 	"github.com/claimward/claimward-vpn-client/pkg/protocol"
+	"github.com/claimward/claimward-vpn-client/pkg/routeclient"
 	"github.com/claimward/claimward-vpn-client/pkg/tokenstore"
 	"github.com/claimward/claimward-vpn-client/pkg/wgkey"
 )
@@ -31,6 +32,8 @@ type Core struct {
 	connected bool
 	iface     string
 	assigned  string
+	// watchCancel stops the gRPC route watcher (set while connected).
+	watchCancel context.CancelFunc
 	// pending device-code prompt (GitHub device flow), surfaced via Status.
 	devURI  string
 	devCode string
@@ -232,11 +235,41 @@ func (c *Core) Connect(ctx context.Context) error {
 	c.iface = hresp.Interface
 	c.assigned = resp.AssignedIP
 	c.mu.Unlock()
+
+	// Watch the server for live route updates and apply them via the helper.
+	if resp.GRPCEndpoint != "" {
+		c.startRouteWatch(resp.GRPCEndpoint, sess.Bearer, pair.Public.String(), helper)
+	}
 	return nil
+}
+
+func (c *Core) startRouteWatch(endpoint, bearer, pubKey string, helper *helperclient.Client) {
+	c.mu.Lock()
+	if c.watchCancel != nil {
+		c.watchCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	c.watchCancel = cancel
+	c.mu.Unlock()
+	go func() {
+		_ = routeclient.Watch(ctx, endpoint, bearer, pubKey, func(u routeclient.Update) {
+			_, _ = helper.UpdateRoutes(u.AllowedIPs)
+		})
+	}()
+}
+
+func (c *Core) stopRouteWatch() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.watchCancel != nil {
+		c.watchCancel()
+		c.watchCancel = nil
+	}
 }
 
 // Disconnect tears the tunnel down and deregisters the peer.
 func (c *Core) Disconnect(ctx context.Context) error {
+	c.stopRouteWatch()
 	_, api, helper := c.deps()
 	_, derr := helper.Down()
 

@@ -90,6 +90,8 @@ func (h *helper) handle(conn net.Conn) {
 		writeResp(conn, h.down())
 	case hproto.ActionStatus:
 		writeResp(conn, h.status())
+	case hproto.ActionUpdateRoutes:
+		writeResp(conn, h.updateRoutes(req.AllowedIPs))
 	default:
 		writeResp(conn, hproto.Response{Error: "unknown action: " + req.Action})
 	}
@@ -128,6 +130,19 @@ func (h *helper) down() hproto.Response {
 		h.log.Info("tunnel down")
 	}
 	return hproto.Response{OK: true, Connected: false}
+}
+
+func (h *helper) updateRoutes(allowedIPs []string) hproto.Response {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.tun == nil {
+		return hproto.Response{Error: "no active tunnel"}
+	}
+	if err := h.tun.UpdateRoutes(allowedIPs); err != nil {
+		return hproto.Response{Error: err.Error()}
+	}
+	h.log.Info("routes updated", "allowed_ips", allowedIPs, "interface", h.tun.Name())
+	return hproto.Response{OK: true, Connected: true, Interface: h.tun.Name()}
 }
 
 func (h *helper) status() hproto.Response {
