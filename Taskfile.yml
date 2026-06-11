@@ -113,9 +113,10 @@ tasks:
           # and LaunchServices would attribute the process to the LSUIElement agent
           # bundle, so the window would never come to the foreground.
           cp bin/{{.APP}} "$DASH/Contents/MacOS/dashboard"
-          # Ad-hoc code signature (dev). Real distribution needs a Developer ID
-          # signature + notarization; ad-hoc is enough to run locally / in a VM.
-          codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || echo "warn: codesign failed (continuing)"
+          # Code signature. Defaults to ad-hoc ("-") for local/dev; CI sets
+          # CLAIMWARD_SIGN_ID to a "Developer ID Application: …" identity for
+          # distributable, notarizable builds.
+          codesign --force --deep --sign "${CLAIMWARD_SIGN_ID:--}" "$APP" >/dev/null 2>&1 || echo "warn: codesign failed (continuing)"
           echo "built $APP"
         silent: true
 

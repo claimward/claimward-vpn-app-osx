@@ -117,6 +117,29 @@ sudo ./scripts/install-helper.sh   # root LaunchDaemon + Unix socket
 - DNS push and split-tunnel polish are TODO (see `pkg/wgtun`).
 - App is not yet bundled as a signed `.app`/notarized; that's packaging work.
 
+## Release & CI
+
+`.github/workflows/release.yml` runs on `v*` tags:
+
+- **`dmg`** (GitHub-hosted `macos-15`): builds the DMG and, when signing secrets
+  are set, signs it with a Developer ID identity and notarizes + staples it; then
+  uploads `Claimward.dmg` to the release. Without secrets it falls back to an
+  ad-hoc signature (fine for local/VM use, but Gatekeeper blocks a *downloaded*
+  unsigned DMG).
+- **`deploy-test`** (self-hosted Apple Silicon): runs the Tart VM deploy test
+  against the built DMG. GitHub-hosted macOS runners can't nest virtualization,
+  so this needs a self-hosted runner with Tart and the repo variable
+  `RUN_TART_DEPLOY_TEST=true`.
+
+Signing/notarization secrets (optional):
+
+| Secret | Meaning |
+|--------|---------|
+| `MACOS_CERT_P12` | base64 of the Developer ID Application cert (`.p12`) |
+| `MACOS_CERT_PASSWORD` | password for that `.p12` |
+| `MACOS_SIGN_IDENTITY` | e.g. `Developer ID Application: Acme (TEAMID)` |
+| `AC_APPLE_ID` / `AC_TEAM_ID` / `AC_PASSWORD` | Apple ID + team + app-specific password for `notarytool` |
+
 ## License
 
 BSD 3-Clause — see [LICENSE](LICENSE).

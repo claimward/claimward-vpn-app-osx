@@ -1,0 +1,85 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create releases / upload assets
+
+jobs:
+  # Build (and, if signing secrets are present, sign + notarize) the DMG on a
+  # GitHub-hosted Apple Silicon runner, then attach it to the release.
+  dmg:
+    runs-on: macos-15
+    env:
+      # Optional signing/notarization secrets. When unset, the build is ad-hoc
+      # signed (runs locally / in a VM, but Gatekeeper blocks a downloaded DMG).
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      AC_APPLE_ID: ${{ secrets.AC_APPLE_ID }}
+      AC_TEAM_ID: ${{ secrets.AC_TEAM_ID }}
+      AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pkgx
+        run: curl -Ssf https://pkgx.sh | sh
+
+      - name: Import Developer ID certificate
+        if: env.MACOS_CERT_P12 != ''
+        run: |
+          KCPASS="$(openssl rand -base64 16)"
+          echo "$MACOS_CERT_P12" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KCPASS" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KCPASS" build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPASS" build.keychain
+          rm -f /tmp/cert.p12
+
+      - name: Build DMG
+        run: |
+          # Use the Developer ID identity when provided, else ad-hoc.
+          [ -n "$MACOS_SIGN_IDENTITY" ] && export CLAIMWARD_SIGN_ID="$MACOS_SIGN_IDENTITY"
+          pkgx +go.dev +nodejs.org task dmg
+
+      - name: Notarize and staple
+        if: env.AC_APPLE_ID != '' && env.MACOS_SIGN_IDENTITY != ''
+        run: |
+          xcrun notarytool submit dist/Claimward.dmg \
+            --apple-id "$AC_APPLE_ID" --team-id "$AC_TEAM_ID" --password "$AC_PASSWORD" \
+            --wait
+          xcrun stapler staple dist/Claimward.dmg
+          xcrun stapler validate dist/Claimward.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Claimward-dmg
+          path: dist/Claimward.dmg
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Claimward.dmg
+
+  # End-to-end deploy test in a Tart macOS VM. GitHub-hosted macOS runners do NOT
+  # support nested virtualization, so this needs a self-hosted Apple Silicon
+  # runner with Tart installed. Enable by setting repo variable
+  # RUN_TART_DEPLOY_TEST = "true" and registering such a runner.
+  deploy-test:
+    if: vars.RUN_TART_DEPLOY_TEST == 'true'
+    needs: dmg
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Claimward-dmg
+          path: dist
+      - name: Deploy test in Tart VM (tests the release DMG, no rebuild)
+        run: ./scripts/test-deploy-tart.sh
