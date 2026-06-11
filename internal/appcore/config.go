@@ -32,7 +32,9 @@ func LoadConfig() (*Config, error) {
 				return nil, jerr
 			}
 		} else if !errors.Is(rerr, fs.ErrNotExist) {
-			return nil, rerr
+			// Unreadable (e.g. permission) — start unconfigured rather than fail;
+			// the user can set it via the in-app configuration menu.
+			c = &Config{}
 		}
 	}
 	override(&c.ServerURL, "CLAIMWARD_SERVER")

@@ -51,7 +51,10 @@ func runUI(url string) {
 func runTray() {
 	cfg, err := appcore.LoadConfig()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		// Don't die on a bad/unreadable config — start unconfigured so the user
+		// can fix it from the menu (Configuration…).
+		log.Printf("config: %v (starting unconfigured)", err)
+		cfg = &appcore.Config{Provider: "github"}
 	}
 	core := appcore.New(cfg)
 
