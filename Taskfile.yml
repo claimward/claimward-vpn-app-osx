@@ -142,7 +142,7 @@ tasks:
           {
             "server_url": "http://127.0.0.1:8080",
             "provider": "oidc",
-            "oidc_issuer": "http://127.0.0.1:5556/dex",
+            "oidc_issuer": "http://localhost:5556/dex",
             "oidc_client_id": "claimward"
           }
           JSON
