@@ -50,6 +50,7 @@ func Start(core *appcore.Core) (*Server, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/status", s.guard(s.handleStatus))
+	mux.HandleFunc("/api/config", s.guard(s.handleConfig))
 	mux.HandleFunc("/api/login", s.guard(s.handleLogin))
 	mux.HandleFunc("/api/connect", s.guard(s.handleConnect))
 	mux.HandleFunc("/api/disconnect", s.guard(s.handleDisconnect))
@@ -87,6 +88,22 @@ func (s *Server) guard(h http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, s.core.Status())
+}
+
+// handleConfig returns the current configuration (GET) or saves a new one (POST).
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		var cfg appcore.Config
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			writeErr(w, err)
+			return
+		}
+		if err := s.core.UpdateConfig(cfg); err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
+	writeJSON(w, s.core.Config())
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {

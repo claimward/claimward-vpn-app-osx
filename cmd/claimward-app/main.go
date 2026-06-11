@@ -83,6 +83,7 @@ func (a *trayApp) onReady() {
 	mStatus.Disable()
 	systray.AddSeparator()
 	mOpen := systray.AddMenuItem("Open Claimward…", "Open the dashboard window")
+	mSettings := systray.AddMenuItem("Configuration…", "Edit Claimward settings")
 	mConnect := systray.AddMenuItem("Connect", "Authenticate and bring up the tunnel")
 	mDisconnect := systray.AddMenuItem("Disconnect", "Tear down the tunnel")
 	systray.AddSeparator()
@@ -121,7 +122,13 @@ func (a *trayApp) onReady() {
 
 	go func() {
 		for range mOpen.ClickedCh {
-			a.openDashboard()
+			a.openDashboard("")
+		}
+	}()
+
+	go func() {
+		for range mSettings.ClickedCh {
+			a.openDashboard("#settings")
 		}
 	}()
 
@@ -171,7 +178,7 @@ func (a *trayApp) connect() {
 // foreground — a bare binary spawned from a menu-bar agent stays behind other
 // windows on modern macOS. Outside a bundle (dev `task start`) it falls back to
 // a direct exec, which may open in the background.
-func (a *trayApp) openDashboard() {
+func (a *trayApp) openDashboard(frag string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -180,7 +187,7 @@ func (a *trayApp) openDashboard() {
 		log.Printf("open dashboard: executable path: %v", err)
 		return
 	}
-	url := a.ui.URL()
+	url := a.ui.URL() + frag
 
 	if dash := dashboardBundle(exe); dash != "" {
 		// `open` (without -n) launches the dashboard or, if already running,

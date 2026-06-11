@@ -5,6 +5,9 @@
   let status = null
   let busy = ''
   let error = ''
+  let view = 'main' // 'main' | 'settings'
+  let cfg = null
+  let savingCfg = false
 
   async function refresh() {
     try {
@@ -27,9 +30,35 @@
     }
   }
 
+  async function openSettings() {
+    error = ''
+    try {
+      cfg = await api('GET', '/api/config')
+      if (!cfg.provider) cfg.provider = 'github'
+      view = 'settings'
+    } catch (e) {
+      error = String(e.message || e)
+    }
+  }
+
+  async function saveSettings() {
+    savingCfg = true
+    error = ''
+    try {
+      await api('POST', '/api/config', cfg)
+      await refresh()
+      view = 'main'
+    } catch (e) {
+      error = String(e.message || e)
+    } finally {
+      savingCfg = false
+    }
+  }
+
   onMount(() => {
     refresh()
-    const id = setInterval(refresh, 4000)
+    if (location.hash === '#settings') openSettings()
+    const id = setInterval(() => view === 'main' && refresh(), 4000)
     return () => clearInterval(id)
   })
 
@@ -42,19 +71,54 @@
 <main>
   <header>
     <img class="logo" src="claimward-lockup.svg" alt="Claimward" />
+    {#if status}
+      <button
+        class="gear"
+        title="Configuration"
+        aria-label="Configuration"
+        on:click={() => (view === 'settings' ? (view = 'main') : openSettings())}
+      >⚙</button>
+    {/if}
   </header>
 
-  {#if !status}
+  {#if view === 'settings' && cfg}
+    <div class="settings">
+      <h2>Configuration</h2>
+      <label>Server URL
+        <input bind:value={cfg.server_url} placeholder="https://vpn.example.com" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      </label>
+      <label>Identity provider
+        <select bind:value={cfg.provider}>
+          <option value="github">GitHub (device flow)</option>
+          <option value="oidc">OIDC</option>
+        </select>
+      </label>
+      {#if cfg.provider === 'oidc'}
+        <label>OIDC issuer
+          <input bind:value={cfg.oidc_issuer} placeholder="https://issuer.example.com" autocapitalize="off" autocorrect="off" spellcheck="false" />
+        </label>
+        <label>OIDC client ID
+          <input bind:value={cfg.oidc_client_id} autocapitalize="off" autocorrect="off" spellcheck="false" />
+        </label>
+      {:else}
+        <label>GitHub client ID
+          <input bind:value={cfg.github_client_id} placeholder="Iv1.0123456789abcdef" autocapitalize="off" autocorrect="off" spellcheck="false" />
+        </label>
+      {/if}
+      <div class="actions">
+        <button class="primary" disabled={savingCfg} on:click={saveSettings}>
+          {savingCfg ? 'Saving…' : 'Save'}
+        </button>
+        <button class="ghost" disabled={savingCfg} on:click={() => (view = 'main')}>Cancel</button>
+      </div>
+    </div>
+  {:else if !status}
     <p class="muted">Loading…</p>
   {:else if !configOK}
     <div class="card warn">
       <strong>Not configured</strong>
       <p class="muted">{status.config_error}</p>
-      <p class="muted small">
-        Set <code>server_url</code>, <code>oidc_issuer</code> and
-        <code>oidc_client_id</code> in
-        <code>~/Library/Application&nbsp;Support/Claimward/config.json</code>.
-      </p>
+      <button class="primary" on:click={openSettings}>Open configuration</button>
     </div>
   {:else}
     <div class="card status {connected ? 'on' : 'off'}">
@@ -133,8 +197,51 @@
   header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 10px;
     margin-bottom: 22px;
+  }
+  .gear {
+    background: transparent;
+    border: none;
+    color: var(--muted, #a9a9c4);
+    font-size: 20px;
+    line-height: 1;
+    padding: 6px;
+    cursor: pointer;
+    border-radius: 8px;
+  }
+  .gear:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .settings h2 {
+    font-size: 17px;
+    margin: 0 0 16px;
+  }
+  .settings label {
+    display: block;
+    font-size: 12px;
+    color: #a9a9c4;
+    margin-bottom: 14px;
+  }
+  .settings input,
+  .settings select {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 5px;
+    padding: 9px 11px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: #f5f5fa;
+    font-size: 14px;
+  }
+  .settings input:focus,
+  .settings select:focus {
+    outline: none;
+    border-color: #5b6bff;
   }
   .logo {
     height: 30px;

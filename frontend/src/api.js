@@ -3,11 +3,13 @@
 
 const token = new URLSearchParams(location.search).get('t') || ''
 
-export async function api(method, path) {
-  const res = await fetch(path, {
-    method,
-    headers: { 'X-Claimward-Token': token },
-  })
+export async function api(method, path, body) {
+  const opts = { method, headers: { 'X-Claimward-Token': token } }
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json'
+    opts.body = JSON.stringify(body)
+  }
+  const res = await fetch(path, opts)
   let data = {}
   try {
     data = await res.json()

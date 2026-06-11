@@ -23,11 +23,11 @@ import (
 
 // Core is the app's stateful service.
 type Core struct {
+	mu     sync.Mutex
 	cfg    *Config
 	api    *client.Client
 	helper *helperclient.Client
 
-	mu        sync.Mutex
 	connected bool
 	iface     string
 	assigned  string
@@ -43,6 +43,37 @@ func New(cfg *Config) *Core {
 		api:    client.New(cfg.ServerURL),
 		helper: helperclient.New(cfg.SocketPath),
 	}
+}
+
+// deps returns a consistent snapshot of the config and clients under the lock,
+// so a concurrent UpdateConfig can't tear them.
+func (c *Core) deps() (Config, *client.Client, *helperclient.Client) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return *c.cfg, c.api, c.helper
+}
+
+// Config returns the current configuration.
+func (c *Core) Config() Config {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return *c.cfg
+}
+
+// UpdateConfig persists a new configuration and applies it live.
+func (c *Core) UpdateConfig(in Config) error {
+	if in.Provider == "" {
+		in.Provider = "github"
+	}
+	if err := SaveConfig(&in); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cfg = &in
+	c.api = client.New(in.ServerURL)
+	c.helper = helperclient.New(in.SocketPath)
+	return nil
 }
 
 // Status is a snapshot for the UI and tray.
@@ -64,8 +95,10 @@ type Status struct {
 
 // Status returns the current state.
 func (c *Core) Status() Status {
-	st := Status{ServerURL: c.cfg.ServerURL, Provider: c.cfg.Provider}
-	if err := c.cfg.Validate(); err != nil {
+	cfg, _, helper := c.deps()
+
+	st := Status{ServerURL: cfg.ServerURL, Provider: cfg.Provider}
+	if err := cfg.Validate(); err != nil {
 		st.ConfigError = err.Error()
 	} else {
 		st.ConfigOK = true
@@ -78,9 +111,9 @@ func (c *Core) Status() Status {
 		}
 	}
 
-	st.HelperInstalled = c.helper.Available()
+	st.HelperInstalled = helper.Available()
 	if st.HelperInstalled {
-		if hresp, err := c.helper.Status(); err == nil {
+		if hresp, err := helper.Status(); err == nil {
 			st.Connected = hresp.Connected
 			st.Interface = hresp.Interface
 		}
@@ -96,12 +129,12 @@ func (c *Core) Status() Status {
 	return st
 }
 
-func (c *Core) authConfig() auth.Config {
+func authConfig(cfg Config) auth.Config {
 	return auth.Config{
-		Provider:       c.cfg.Provider,
-		GitHubClientID: c.cfg.GitHubClientID,
-		OIDCIssuer:     c.cfg.OIDCIssuer,
-		OIDCClientID:   c.cfg.OIDCClientID,
+		Provider:       cfg.Provider,
+		GitHubClientID: cfg.GitHubClientID,
+		OIDCIssuer:     cfg.OIDCIssuer,
+		OIDCClientID:   cfg.OIDCClientID,
 	}
 }
 
@@ -109,10 +142,11 @@ func (c *Core) authConfig() auth.Config {
 // GitHub device flow, the verification URL + user code are exposed via Status
 // while the user completes sign-in in their browser.
 func (c *Core) Login(ctx context.Context) error {
-	if err := c.cfg.Validate(); err != nil {
+	cfg, _, _ := c.deps()
+	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	provider, err := auth.New(c.authConfig())
+	provider, err := auth.New(authConfig(cfg))
 	if err != nil {
 		return err
 	}
@@ -154,7 +188,8 @@ func (c *Core) Login(ctx context.Context) error {
 
 // Connect enrolls the device and asks the helper to bring up the tunnel.
 func (c *Core) Connect(ctx context.Context) error {
-	if err := c.cfg.Validate(); err != nil {
+	cfg, api, helper := c.deps()
+	if err := cfg.Validate(); err != nil {
 		return err
 	}
 	sess, err := tokenstore.Load()
@@ -170,7 +205,7 @@ func (c *Core) Connect(ctx context.Context) error {
 	}
 
 	host, _ := os.Hostname()
-	resp, err := c.api.Enroll(ctx, sess.Bearer, pair.Public, protocol.DeviceInfo{
+	resp, err := api.Enroll(ctx, sess.Bearer, pair.Public, protocol.DeviceInfo{
 		Name: host, OS: "darwin", Platform: "app-osx",
 	})
 	if err != nil {
@@ -187,7 +222,7 @@ func (c *Core) Connect(ctx context.Context) error {
 		MTU:             resp.MTU,
 		Keepalive:       resp.PersistentKeepalive,
 	}
-	hresp, err := c.helper.Up(spec)
+	hresp, err := helper.Up(spec)
 	if err != nil {
 		return err
 	}
@@ -202,11 +237,12 @@ func (c *Core) Connect(ctx context.Context) error {
 
 // Disconnect tears the tunnel down and deregisters the peer.
 func (c *Core) Disconnect(ctx context.Context) error {
-	_, derr := c.helper.Down()
+	_, api, helper := c.deps()
+	_, derr := helper.Down()
 
 	if sess, _ := tokenstore.Load(); sess != nil && sess.WGPrivateKey != "" {
 		if pair, err := wgkey.ParsePrivate(sess.WGPrivateKey); err == nil {
-			_ = c.api.Deregister(ctx, sess.Bearer, pair.Public)
+			_ = api.Deregister(ctx, sess.Bearer, pair.Public)
 		}
 	}
 

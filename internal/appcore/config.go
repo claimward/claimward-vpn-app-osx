@@ -82,6 +82,32 @@ func configPath() (string, error) {
 	return filepath.Join(dir, "Claimward", "config.json"), nil
 }
 
+// ConfigPath returns the on-disk config location for display (best-effort).
+func ConfigPath() string {
+	p, _ := configPath()
+	return p
+}
+
+// SaveConfig writes the config to disk atomically with 0600 permissions.
+func SaveConfig(c *Config) error {
+	p, err := configPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p)
+}
+
 func override(field *string, env string) {
 	if v := os.Getenv(env); v != "" {
 		*field = v
