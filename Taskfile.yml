@@ -108,8 +108,9 @@ tasks:
           cp deploy/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
           # Nested regular app whose window LaunchServices will foreground.
           DASH="$APP/Contents/Resources/Dashboard.app"
-          mkdir -p "$DASH/Contents/MacOS"
+          mkdir -p "$DASH/Contents/MacOS" "$DASH/Contents/Resources"
           cp deploy/Info.dashboard.plist "$DASH/Contents/Info.plist"
+          cp deploy/AppIcon.icns "$DASH/Contents/Resources/AppIcon.icns"
           # A real copy (NOT a symlink): a symlink resolves back into Claimward.app
           # and LaunchServices would attribute the process to the LSUIElement agent
           # bundle, so the window would never come to the foreground.
