@@ -41,7 +41,7 @@
 
 <main>
   <header>
-    <div class="logo">▲</div>
+    <img class="logo" src="claimward-mark.svg" alt="" />
     <h1>Claimward</h1>
   </header>
 
@@ -138,8 +138,9 @@
     margin-bottom: 22px;
   }
   .logo {
-    font-size: 22px;
-    color: #7c8cff;
+    width: 30px;
+    height: 30px;
+    display: block;
   }
   h1 {
     font-size: 19px;
