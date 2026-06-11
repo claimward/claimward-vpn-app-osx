@@ -41,8 +41,7 @@
 
 <main>
   <header>
-    <img class="logo" src="claimward-mark.svg" alt="" />
-    <h1>Claimward</h1>
+    <img class="logo" src="claimward-lockup.svg" alt="Claimward" />
   </header>
 
   {#if !status}
@@ -138,8 +137,8 @@
     margin-bottom: 22px;
   }
   .logo {
-    width: 30px;
     height: 30px;
+    width: auto;
     display: block;
   }
   h1 {
