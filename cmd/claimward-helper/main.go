@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -16,16 +17,22 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/claimward/claimward-vpn-app-osx/internal/hproto"
+	"github.com/claimward/claimward-vpn-client/pkg/client"
+	"github.com/claimward/claimward-vpn-client/pkg/protocol"
+	"github.com/claimward/claimward-vpn-client/pkg/routeclient"
 	"github.com/claimward/claimward-vpn-client/pkg/wgkey"
 	"github.com/claimward/claimward-vpn-client/pkg/wgtun"
 )
 
 type helper struct {
-	log *slog.Logger
-	mu  sync.Mutex
-	tun *wgtun.Tunnel
+	log         *slog.Logger
+	mu          sync.Mutex
+	tun         *wgtun.Tunnel
+	assigned    string
+	watchCancel context.CancelFunc
 }
 
 func main() {
@@ -84,6 +91,8 @@ func (h *helper) handle(conn net.Conn) {
 	}
 
 	switch req.Action {
+	case hproto.ActionConnect:
+		writeResp(conn, h.connect(req.Connect))
 	case hproto.ActionUp:
 		writeResp(conn, h.up(req.Tunnel))
 	case hproto.ActionDown:
@@ -95,6 +104,70 @@ func (h *helper) handle(conn net.Conn) {
 	default:
 		writeResp(conn, hproto.Response{Error: "unknown action: " + req.Action})
 	}
+}
+
+// connect does the whole server-facing flow as root (exempt from macOS Local
+// Network privacy): enroll, bring up the tunnel, and watch for route pushes.
+func (h *helper) connect(spec *hproto.ConnectSpec) hproto.Response {
+	if spec == nil {
+		return hproto.Response{Error: "missing connect spec"}
+	}
+	pair, err := wgkey.ParsePrivate(spec.PrivateKey)
+	if err != nil {
+		return hproto.Response{Error: "private key: " + err.Error()}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	resp, err := client.New(spec.ServerURL).Enroll(ctx, spec.Bearer, pair.Public, protocol.DeviceInfo{
+		Name: spec.DeviceName, OS: "darwin", Platform: "app-osx",
+	})
+	if err != nil {
+		return hproto.Response{Error: "enroll: " + err.Error()}
+	}
+	cfg, err := client.TunnelConfig(resp, pair.Private)
+	if err != nil {
+		return hproto.Response{Error: err.Error()}
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.watchCancel != nil {
+		h.watchCancel()
+		h.watchCancel = nil
+	}
+	if h.tun != nil {
+		_ = h.tun.Close()
+		h.tun = nil
+	}
+	tun, err := wgtun.Up(cfg)
+	if err != nil {
+		return hproto.Response{Error: err.Error()}
+	}
+	h.tun = tun
+	h.assigned = resp.AssignedIP
+
+	if resp.GRPCEndpoint != "" {
+		wctx, wcancel := context.WithCancel(context.Background())
+		h.watchCancel = wcancel
+		ep, bearer, pub := resp.GRPCEndpoint, spec.Bearer, pair.Public.String()
+		go func() {
+			_ = routeclient.Watch(wctx, ep, bearer, pub, func(u routeclient.Update) {
+				h.mu.Lock()
+				t := h.tun
+				h.mu.Unlock()
+				if t == nil {
+					return
+				}
+				if e := t.UpdateRoutes(u.AllowedIPs); e != nil {
+					h.log.Error("apply pushed routes", "err", e)
+				} else {
+					h.log.Info("routes updated", "serial", u.Serial, "allowed_ips", u.AllowedIPs)
+				}
+			})
+		}()
+	}
+	h.log.Info("connected", "interface", tun.Name(), "assigned", resp.AssignedIP, "routes", resp.AllowedIPs)
+	return hproto.Response{OK: true, Connected: true, Interface: tun.Name(), AssignedIP: resp.AssignedIP}
 }
 
 func (h *helper) up(spec *hproto.TunnelSpec) hproto.Response {
@@ -124,9 +197,14 @@ func (h *helper) up(spec *hproto.TunnelSpec) hproto.Response {
 func (h *helper) down() hproto.Response {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.watchCancel != nil {
+		h.watchCancel()
+		h.watchCancel = nil
+	}
 	if h.tun != nil {
 		_ = h.tun.Close()
 		h.tun = nil
+		h.assigned = ""
 		h.log.Info("tunnel down")
 	}
 	return hproto.Response{OK: true, Connected: false}
@@ -151,6 +229,7 @@ func (h *helper) status() hproto.Response {
 	resp := hproto.Response{OK: true, Connected: h.tun != nil}
 	if h.tun != nil {
 		resp.Interface = h.tun.Name()
+		resp.AssignedIP = h.assigned
 	}
 	return resp
 }

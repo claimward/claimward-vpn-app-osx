@@ -14,11 +14,8 @@ import (
 	"time"
 
 	"github.com/claimward/claimward-vpn-app-osx/internal/helperclient"
-	"github.com/claimward/claimward-vpn-app-osx/internal/hproto"
 	"github.com/claimward/claimward-vpn-client/pkg/auth"
 	"github.com/claimward/claimward-vpn-client/pkg/client"
-	"github.com/claimward/claimward-vpn-client/pkg/protocol"
-	"github.com/claimward/claimward-vpn-client/pkg/routeclient"
 	"github.com/claimward/claimward-vpn-client/pkg/tokenstore"
 	"github.com/claimward/claimward-vpn-client/pkg/wgkey"
 )
@@ -33,8 +30,6 @@ type Core struct {
 	connected bool
 	iface     string
 	assigned  string
-	// watchCancel stops the gRPC route watcher (set while connected).
-	watchCancel context.CancelFunc
 	// pending device-code prompt (GitHub device flow), surfaced via Status.
 	devURI  string
 	devCode string
@@ -212,9 +207,11 @@ func (c *Core) Login(ctx context.Context) error {
 	return tokenstore.Save(sess)
 }
 
-// Connect enrolls the device and asks the helper to bring up the tunnel.
-func (c *Core) Connect(ctx context.Context) error {
-	cfg, api, helper := c.deps()
+// Connect asks the (root) helper to enroll, bring up the tunnel and watch routes.
+// The server comms live in the helper because macOS Local Network privacy blocks
+// the unprivileged app from reaching a LAN server.
+func (c *Core) Connect(_ context.Context) error {
+	cfg, _, helper := c.deps()
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
@@ -225,96 +222,33 @@ func (c *Core) Connect(ctx context.Context) error {
 	if sess == nil || sess.Bearer == "" {
 		return fmt.Errorf("not signed in")
 	}
-	pair, err := wgkey.ParsePrivate(sess.WGPrivateKey)
-	if err != nil {
+	if _, err := wgkey.ParsePrivate(sess.WGPrivateKey); err != nil {
 		return fmt.Errorf("device key invalid, sign in again: %w", err)
 	}
 
 	host, _ := os.Hostname()
-	c.logf("enroll: POST %s/api/v1/enroll", cfg.ServerURL)
-	resp, err := api.Enroll(ctx, sess.Bearer, pair.Public, protocol.DeviceInfo{
-		Name: host, OS: "darwin", Platform: "app-osx",
-	})
+	c.logf("connect: helper enrolling at %s and bringing up the tunnel…", cfg.ServerURL)
+	hresp, err := helper.Connect(cfg.ServerURL, sess.Bearer, sess.WGPrivateKey, host)
 	if err != nil {
-		c.logf("enroll FAILED: %v", err)
-		return fmt.Errorf("enroll: %w", err)
-	}
-	c.logf("enrolled: ip=%s endpoint=%s routes=%v", resp.AssignedIP, resp.Endpoint, resp.AllowedIPs)
-
-	spec := hproto.TunnelSpec{
-		PrivateKey:      sess.WGPrivateKey,
-		ServerPublicKey: resp.ServerPublicKey,
-		Endpoint:        resp.Endpoint,
-		Address:         resp.AssignedIP,
-		AllowedIPs:      resp.AllowedIPs,
-		DNS:             resp.DNS,
-		MTU:             resp.MTU,
-		Keepalive:       resp.PersistentKeepalive,
-	}
-	c.logf("bringing up tunnel via helper…")
-	hresp, err := helper.Up(spec)
-	if err != nil {
-		c.logf("tunnel up FAILED: %v", err)
+		c.logf("connect FAILED: %v", err)
 		return err
 	}
 
 	c.mu.Lock()
 	c.connected = true
 	c.iface = hresp.Interface
-	c.assigned = resp.AssignedIP
+	c.assigned = hresp.AssignedIP
 	c.mu.Unlock()
-	c.logf("connected: interface=%s ip=%s", hresp.Interface, resp.AssignedIP)
-
-	// Watch the server for live route updates and apply them via the helper.
-	if resp.GRPCEndpoint != "" {
-		c.logf("watching routes at %s", resp.GRPCEndpoint)
-		c.startRouteWatch(resp.GRPCEndpoint, sess.Bearer, pair.Public.String(), helper)
-	}
+	c.logf("connected: interface=%s ip=%s", hresp.Interface, hresp.AssignedIP)
 	return nil
 }
 
-func (c *Core) startRouteWatch(endpoint, bearer, pubKey string, helper *helperclient.Client) {
-	c.mu.Lock()
-	if c.watchCancel != nil {
-		c.watchCancel()
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c.watchCancel = cancel
-	c.mu.Unlock()
-	go func() {
-		err := routeclient.Watch(ctx, endpoint, bearer, pubKey, func(u routeclient.Update) {
-			c.logf("route update (serial %d): %v", u.Serial, u.AllowedIPs)
-			if _, herr := helper.UpdateRoutes(u.AllowedIPs); herr != nil {
-				c.logf("apply routes FAILED: %v", herr)
-			}
-		})
-		if err != nil && ctx.Err() == nil {
-			c.logf("route watch ended: %v", err)
-		}
-	}()
-}
-
-func (c *Core) stopRouteWatch() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.watchCancel != nil {
-		c.watchCancel()
-		c.watchCancel = nil
-	}
-}
-
-// Disconnect tears the tunnel down and deregisters the peer.
-func (c *Core) Disconnect(ctx context.Context) error {
+// Disconnect tears the tunnel down (the helper also stops the route watch; the
+// server-side peer lease expires on its own).
+func (c *Core) Disconnect(_ context.Context) error {
 	c.logf("disconnecting…")
-	c.stopRouteWatch()
-	_, api, helper := c.deps()
+	_, _, helper := c.deps()
 	_, derr := helper.Down()
-
-	if sess, _ := tokenstore.Load(); sess != nil && sess.WGPrivateKey != "" {
-		if pair, err := wgkey.ParsePrivate(sess.WGPrivateKey); err == nil {
-			_ = api.Deregister(ctx, sess.Bearer, pair.Public)
-		}
-	}
 
 	c.mu.Lock()
 	c.connected = false

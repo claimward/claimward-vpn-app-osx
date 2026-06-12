@@ -14,6 +14,11 @@ const (
 	ActionDown         = "down"
 	ActionStatus       = "status"
 	ActionUpdateRoutes = "update-routes" // apply pushed routes to the live tunnel
+	// ActionConnect makes the (root) helper do the whole server-facing flow:
+	// enroll, bring up the tunnel, and watch routes. macOS "Local Network"
+	// privacy blocks the unprivileged app from reaching a LAN server, but the
+	// root helper is exempt — so the server comms live here.
+	ActionConnect = "connect"
 )
 
 // Request is sent by the app to the helper.
@@ -22,6 +27,17 @@ type Request struct {
 	Tunnel *TunnelSpec `json:"tunnel,omitempty"` // required for ActionUp
 	// AllowedIPs is the new routed CIDR set for ActionUpdateRoutes.
 	AllowedIPs []string `json:"allowed_ips,omitempty"`
+	// Connect carries what the helper needs for ActionConnect.
+	Connect *ConnectSpec `json:"connect,omitempty"`
+}
+
+// ConnectSpec is the input for ActionConnect: the helper enrolls with the server
+// using these, then brings up the tunnel and watches for route pushes.
+type ConnectSpec struct {
+	ServerURL  string `json:"server_url"`
+	Bearer     string `json:"bearer"`      // OIDC id_token / access token
+	PrivateKey string `json:"private_key"` // device WireGuard private key (base64)
+	DeviceName string `json:"device_name"`
 }
 
 // TunnelSpec is a JSON-friendly mirror of wgtun.Config (keys as base64 strings).
@@ -38,8 +54,9 @@ type TunnelSpec struct {
 
 // Response is returned by the helper.
 type Response struct {
-	OK        bool   `json:"ok"`
-	Error     string `json:"error,omitempty"`
-	Connected bool   `json:"connected"`
-	Interface string `json:"interface,omitempty"`
+	OK         bool   `json:"ok"`
+	Error      string `json:"error,omitempty"`
+	Connected  bool   `json:"connected"`
+	Interface  string `json:"interface,omitempty"`
+	AssignedIP string `json:"assigned_ip,omitempty"`
 }

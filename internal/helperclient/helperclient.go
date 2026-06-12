@@ -23,6 +23,18 @@ func New(socketPath string) *Client {
 	return &Client{SocketPath: socketPath}
 }
 
+// Connect asks the (root) helper to enroll, bring up the tunnel and watch routes.
+// The helper does the server comms because the unprivileged app is blocked from
+// LAN servers by macOS Local Network privacy.
+func (c *Client) Connect(serverURL, bearer, privateKey, deviceName string) (*hproto.Response, error) {
+	return c.call(60*time.Second, hproto.Request{
+		Action: hproto.ActionConnect,
+		Connect: &hproto.ConnectSpec{
+			ServerURL: serverURL, Bearer: bearer, PrivateKey: privateKey, DeviceName: deviceName,
+		},
+	})
+}
+
 // Up brings the tunnel up with the given spec (tunnel setup can take a moment).
 func (c *Client) Up(spec hproto.TunnelSpec) (*hproto.Response, error) {
 	return c.call(30*time.Second, hproto.Request{Action: hproto.ActionUp, Tunnel: &spec})
