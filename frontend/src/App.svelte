@@ -8,6 +8,7 @@
   let view = 'main' // 'main' | 'settings'
   let cfg = null
   let savingCfg = false
+  let showLog = false
 
   async function refresh() {
     try {
@@ -185,6 +186,15 @@
       <p class="muted small center warn-text">
         Privileged helper not detected — install it to connect (see README).
       </p>
+    {/if}
+
+    {#if status.log && status.log.length}
+      <button class="logtoggle" on:click={() => (showLog = !showLog)}>
+        {showLog ? '▾' : '▸'} Connection log
+      </button>
+      {#if showLog}
+        <pre class="log">{status.log.join('\n')}</pre>
+      {/if}
     {/if}
   {/if}
 
@@ -368,6 +378,31 @@
     font-size: 13px;
     text-align: center;
     margin-top: 14px;
+  }
+  .logtoggle {
+    background: transparent;
+    border: none;
+    color: #a9a9c4;
+    font-size: 12px;
+    padding: 12px 0 4px;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+  }
+  .log {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+    padding: 10px;
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #c9c9de;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 180px;
+    overflow-y: auto;
   }
   code {
     background: rgba(255, 255, 255, 0.08);

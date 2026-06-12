@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/claimward/claimward-vpn-app-osx/internal/helperclient"
 	"github.com/claimward/claimward-vpn-app-osx/internal/hproto"
@@ -37,6 +38,20 @@ type Core struct {
 	// pending device-code prompt (GitHub device flow), surfaced via Status.
 	devURI  string
 	devCode string
+	// log is a capped ring of timestamped connection-process lines (verbose).
+	log []string
+}
+
+// logf appends a timestamped line to the verbose connection log (surfaced in
+// the UI). Must NOT be called while holding c.mu.
+func (c *Core) logf(format string, args ...any) {
+	line := time.Now().Format("15:04:05") + "  " + fmt.Sprintf(format, args...)
+	c.mu.Lock()
+	c.log = append(c.log, line)
+	if len(c.log) > 200 {
+		c.log = c.log[len(c.log)-200:]
+	}
+	c.mu.Unlock()
 }
 
 // New builds a Core from config.
@@ -94,6 +109,8 @@ type Status struct {
 	// Device-code prompt, set while a GitHub device-flow login is in progress.
 	DeviceVerificationURI string `json:"device_verification_uri,omitempty"`
 	DeviceUserCode        string `json:"device_user_code,omitempty"`
+	// Log is the verbose connection-process log (most recent lines).
+	Log []string `json:"log,omitempty"`
 }
 
 // Status returns the current state.
@@ -128,6 +145,9 @@ func (c *Core) Status() Status {
 	}
 	st.DeviceVerificationURI = c.devURI
 	st.DeviceUserCode = c.devCode
+	if n := len(c.log); n > 0 {
+		st.Log = append([]string(nil), c.log...)
+	}
 	c.mu.Unlock()
 	return st
 }
@@ -165,10 +185,13 @@ func (c *Core) Login(ctx context.Context) error {
 		c.mu.Unlock()
 	}()
 
+	c.logf("sign-in via %s…", provider.Name())
 	tok, err := provider.Login(ctx, onPrompt)
 	if err != nil {
+		c.logf("sign-in FAILED: %v", err)
 		return err
 	}
+	c.logf("signed in")
 
 	sess, _ := tokenstore.Load()
 	if sess == nil {
@@ -208,12 +231,15 @@ func (c *Core) Connect(ctx context.Context) error {
 	}
 
 	host, _ := os.Hostname()
+	c.logf("enroll: POST %s/api/v1/enroll", cfg.ServerURL)
 	resp, err := api.Enroll(ctx, sess.Bearer, pair.Public, protocol.DeviceInfo{
 		Name: host, OS: "darwin", Platform: "app-osx",
 	})
 	if err != nil {
+		c.logf("enroll FAILED: %v", err)
 		return fmt.Errorf("enroll: %w", err)
 	}
+	c.logf("enrolled: ip=%s endpoint=%s routes=%v", resp.AssignedIP, resp.Endpoint, resp.AllowedIPs)
 
 	spec := hproto.TunnelSpec{
 		PrivateKey:      sess.WGPrivateKey,
@@ -225,8 +251,10 @@ func (c *Core) Connect(ctx context.Context) error {
 		MTU:             resp.MTU,
 		Keepalive:       resp.PersistentKeepalive,
 	}
+	c.logf("bringing up tunnel via helper…")
 	hresp, err := helper.Up(spec)
 	if err != nil {
+		c.logf("tunnel up FAILED: %v", err)
 		return err
 	}
 
@@ -235,9 +263,11 @@ func (c *Core) Connect(ctx context.Context) error {
 	c.iface = hresp.Interface
 	c.assigned = resp.AssignedIP
 	c.mu.Unlock()
+	c.logf("connected: interface=%s ip=%s", hresp.Interface, resp.AssignedIP)
 
 	// Watch the server for live route updates and apply them via the helper.
 	if resp.GRPCEndpoint != "" {
+		c.logf("watching routes at %s", resp.GRPCEndpoint)
 		c.startRouteWatch(resp.GRPCEndpoint, sess.Bearer, pair.Public.String(), helper)
 	}
 	return nil
@@ -252,9 +282,15 @@ func (c *Core) startRouteWatch(endpoint, bearer, pubKey string, helper *helpercl
 	c.watchCancel = cancel
 	c.mu.Unlock()
 	go func() {
-		_ = routeclient.Watch(ctx, endpoint, bearer, pubKey, func(u routeclient.Update) {
-			_, _ = helper.UpdateRoutes(u.AllowedIPs)
+		err := routeclient.Watch(ctx, endpoint, bearer, pubKey, func(u routeclient.Update) {
+			c.logf("route update (serial %d): %v", u.Serial, u.AllowedIPs)
+			if _, herr := helper.UpdateRoutes(u.AllowedIPs); herr != nil {
+				c.logf("apply routes FAILED: %v", herr)
+			}
 		})
+		if err != nil && ctx.Err() == nil {
+			c.logf("route watch ended: %v", err)
+		}
 	}()
 }
 
@@ -269,6 +305,7 @@ func (c *Core) stopRouteWatch() {
 
 // Disconnect tears the tunnel down and deregisters the peer.
 func (c *Core) Disconnect(ctx context.Context) error {
+	c.logf("disconnecting…")
 	c.stopRouteWatch()
 	_, api, helper := c.deps()
 	_, derr := helper.Down()
