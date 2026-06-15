@@ -45,6 +45,10 @@ func runUI(url string) {
 	w.SetSize(440, 660, webview.HintNone)
 	w.SetSize(360, 480, webview.HintMin)
 	w.Navigate(url)
+	// webview_go never activates the app, so the window can open behind others
+	// (or off-screen) when spawned from the menu-bar agent. Force activation and
+	// raise the window on the UI thread once the run loop starts.
+	w.Dispatch(func() { bringToFront(w.Window()) })
 	w.Run()
 }
 
