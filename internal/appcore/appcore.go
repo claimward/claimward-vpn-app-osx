@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/claimward/claimward-vpn-app-osx/internal/helperclient"
+	"github.com/claimward/claimward-vpn-app-osx/internal/hproto"
 	"github.com/claimward/claimward-vpn-client/pkg/auth"
 	"github.com/claimward/claimward-vpn-client/pkg/client"
 	"github.com/claimward/claimward-vpn-client/pkg/tokenstore"
@@ -210,7 +211,28 @@ func (c *Core) Login(ctx context.Context) error {
 // Connect asks the (root) helper to enroll, bring up the tunnel and watch routes.
 // The server comms live in the helper because macOS Local Network privacy blocks
 // the unprivileged app from reaching a LAN server.
-func (c *Core) Connect(_ context.Context) error {
+// Tenants returns the tenants the signed-in user may connect to. The helper does
+// the server call (the app is blocked from LAN servers by Local Network privacy).
+func (c *Core) Tenants(_ context.Context) ([]hproto.Tenant, error) {
+	cfg, _, helper := c.deps()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	sess, err := tokenstore.Load()
+	if err != nil {
+		return nil, err
+	}
+	if sess == nil || sess.Bearer == "" {
+		return nil, fmt.Errorf("not signed in")
+	}
+	resp, err := helper.ListTenants(cfg.ServerURL, sess.Bearer)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Tenants, nil
+}
+
+func (c *Core) Connect(_ context.Context, tenant string) error {
 	cfg, _, helper := c.deps()
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -227,8 +249,8 @@ func (c *Core) Connect(_ context.Context) error {
 	}
 
 	host, _ := os.Hostname()
-	c.logf("connect: helper enrolling at %s and bringing up the tunnel…", cfg.ServerURL)
-	hresp, err := helper.Connect(cfg.ServerURL, sess.Bearer, sess.WGPrivateKey, host)
+	c.logf("connect: helper enrolling at %s (tenant=%q) and bringing up the tunnel…", cfg.ServerURL, tenant)
+	hresp, err := helper.Connect(cfg.ServerURL, sess.Bearer, sess.WGPrivateKey, host, tenant)
 	if err != nil {
 		c.logf("connect FAILED: %v", err)
 		return err

@@ -26,12 +26,20 @@ func New(socketPath string) *Client {
 // Connect asks the (root) helper to enroll, bring up the tunnel and watch routes.
 // The helper does the server comms because the unprivileged app is blocked from
 // LAN servers by macOS Local Network privacy.
-func (c *Client) Connect(serverURL, bearer, privateKey, deviceName string) (*hproto.Response, error) {
+func (c *Client) Connect(serverURL, bearer, privateKey, deviceName, tenant string) (*hproto.Response, error) {
 	return c.call(60*time.Second, hproto.Request{
 		Action: hproto.ActionConnect,
 		Connect: &hproto.ConnectSpec{
-			ServerURL: serverURL, Bearer: bearer, PrivateKey: privateKey, DeviceName: deviceName,
+			ServerURL: serverURL, Bearer: bearer, PrivateKey: privateKey, DeviceName: deviceName, Tenant: tenant,
 		},
+	})
+}
+
+// ListTenants asks the helper to fetch the tenants the user may connect to.
+func (c *Client) ListTenants(serverURL, bearer string) (*hproto.Response, error) {
+	return c.call(30*time.Second, hproto.Request{
+		Action:  hproto.ActionListTenants,
+		Connect: &hproto.ConnectSpec{ServerURL: serverURL, Bearer: bearer},
 	})
 }
 

@@ -23,6 +23,10 @@ const (
 	// privacy blocks the unprivileged app from reaching a LAN server, but the
 	// root helper is exempt — so the server comms live here.
 	ActionConnect = "connect"
+	// ActionListTenants asks the helper to fetch the tenants the user may connect
+	// to (server call, so it runs in the helper like the rest). Uses the Connect
+	// spec's ServerURL + Bearer.
+	ActionListTenants = "list-tenants"
 )
 
 // Request is sent by the app to the helper.
@@ -43,6 +47,13 @@ type ConnectSpec struct {
 	Bearer     string `json:"bearer"`      // OIDC id_token / access token
 	PrivateKey string `json:"private_key"` // device WireGuard private key (base64)
 	DeviceName string `json:"device_name"`
+	Tenant     string `json:"tenant,omitempty"` // chosen tenant ID (empty = server default)
+}
+
+// Tenant is a tenant the user may connect to (mirrors protocol.TenantInfo).
+type Tenant struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // TunnelSpec is a JSON-friendly mirror of wgtun.Config (keys as base64 strings).
@@ -64,4 +75,6 @@ type Response struct {
 	Connected  bool   `json:"connected"`
 	Interface  string `json:"interface,omitempty"`
 	AssignedIP string `json:"assigned_ip,omitempty"`
+	// Tenants is populated by ActionListTenants.
+	Tenants []Tenant `json:"tenants,omitempty"`
 }

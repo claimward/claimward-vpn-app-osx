@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	fyne.io/systray v1.12.2
-	github.com/claimward/claimward-vpn-client v0.0.0-20260611144032-9ecc63f38fc2
+	github.com/claimward/claimward-vpn-client v0.0.0-20260622124855-ce9f58da1f6b
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 )
 
