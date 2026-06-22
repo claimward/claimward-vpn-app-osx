@@ -55,6 +55,7 @@ func Start(core *appcore.Core) (*Server, error) {
 	mux.HandleFunc("/api/config", s.guard(s.handleConfig))
 	mux.HandleFunc("/api/open", s.guard(s.handleOpen))
 	mux.HandleFunc("/api/login", s.guard(s.handleLogin))
+	mux.HandleFunc("/api/tenants", s.guard(s.handleTenants))
 	mux.HandleFunc("/api/connect", s.guard(s.handleConnect))
 	mux.HandleFunc("/api/disconnect", s.guard(s.handleDisconnect))
 	mux.HandleFunc("/api/logout", s.guard(s.handleLogout))
@@ -134,10 +135,29 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.core.Status())
 }
 
+func (s *Server) handleTenants(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer cancel()
+	tenants, err := s.core.Tenants(ctx)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, tenants)
+}
+
 func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 	defer cancel()
-	if err := s.core.Connect(ctx); err != nil {
+	tenant := ""
+	if r.Body != nil {
+		var body struct {
+			Tenant string `json:"tenant"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		tenant = body.Tenant
+	}
+	if err := s.core.Connect(ctx, tenant); err != nil {
 		writeErr(w, err)
 		return
 	}

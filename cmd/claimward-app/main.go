@@ -173,7 +173,10 @@ func (a *trayApp) connect() {
 			return
 		}
 	}
-	if err := a.core.Connect(ctx); err != nil {
+	// Quick-connect from the tray: let the server pick when the user belongs to a
+	// single tenant. If they belong to several, the server asks them to choose —
+	// they do that from the dashboard's tenant picker.
+	if err := a.core.Connect(ctx, ""); err != nil {
 		log.Printf("connect: %v", err)
 	}
 }

@@ -97,6 +97,8 @@ func (h *helper) handle(conn net.Conn) {
 		writeResp(conn, h.up(req.Tunnel))
 	case hproto.ActionDown:
 		writeResp(conn, h.down(req.Connect))
+	case hproto.ActionListTenants:
+		writeResp(conn, h.listTenants(req.Connect))
 	case hproto.ActionStatus:
 		writeResp(conn, h.status())
 	case hproto.ActionUpdateRoutes:
@@ -104,6 +106,25 @@ func (h *helper) handle(conn net.Conn) {
 	default:
 		writeResp(conn, hproto.Response{Error: "unknown action: " + req.Action})
 	}
+}
+
+// listTenants fetches the tenants the user may connect to. Runs in the helper
+// because the app is blocked from LAN servers by macOS Local Network privacy.
+func (h *helper) listTenants(spec *hproto.ConnectSpec) hproto.Response {
+	if spec == nil || spec.ServerURL == "" || spec.Bearer == "" {
+		return hproto.Response{Error: "missing server url or bearer"}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	tenants, err := client.New(spec.ServerURL).Tenants(ctx, spec.Bearer)
+	if err != nil {
+		return hproto.Response{Error: "list tenants: " + err.Error()}
+	}
+	out := make([]hproto.Tenant, 0, len(tenants))
+	for _, t := range tenants {
+		out = append(out, hproto.Tenant{ID: t.ID, Name: t.Name})
+	}
+	return hproto.Response{OK: true, Tenants: out}
 }
 
 // connect does the whole server-facing flow as root (exempt from macOS Local
@@ -120,7 +141,7 @@ func (h *helper) connect(spec *hproto.ConnectSpec) hproto.Response {
 	defer cancel()
 	resp, err := client.New(spec.ServerURL).Enroll(ctx, spec.Bearer, pair.Public, protocol.DeviceInfo{
 		Name: spec.DeviceName, OS: "darwin", Platform: "app-osx",
-	})
+	}, spec.Tenant)
 	if err != nil {
 		return hproto.Response{Error: "enroll: " + err.Error()}
 	}

@@ -10,6 +10,39 @@
   let savingCfg = false
   let showLog = false
 
+  let tenants = []
+  let selectedTenant = ''
+  let tenantsLoaded = false
+  let loadingTenants = false
+
+  async function loadTenants() {
+    loadingTenants = true
+    try {
+      tenants = (await api('GET', '/api/tenants')) || []
+      if (tenants.length && !tenants.some((t) => t.id === selectedTenant)) {
+        selectedTenant = tenants[0].id
+      }
+      tenantsLoaded = true
+      error = ''
+    } catch (e) {
+      error = String(e.message || e)
+    } finally {
+      loadingTenants = false
+    }
+  }
+
+  async function connect() {
+    busy = 'connect'
+    error = ''
+    try {
+      status = await api('POST', '/api/connect', { tenant: selectedTenant })
+    } catch (e) {
+      error = String(e.message || e)
+    } finally {
+      busy = ''
+    }
+  }
+
   async function refresh() {
     try {
       status = await api('GET', '/api/status')
@@ -74,6 +107,14 @@
   $: connected = status && status.connected
   $: loggedIn = status && status.logged_in
   $: configOK = status && status.config_ok
+  // Fetch the tenants the user may connect to once they're signed in and idle.
+  $: if (loggedIn && !connected && configOK && !tenantsLoaded && !loadingTenants) loadTenants()
+  // Forget the list when signed out so the next user reloads their own tenants.
+  $: if (!loggedIn && tenantsLoaded) {
+    tenantsLoaded = false
+    tenants = []
+    selectedTenant = ''
+  }
   $: deviceCode = status && status.device_user_code
   $: signInURL = status && status.device_verification_uri
 </script>
@@ -170,7 +211,26 @@
           {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
         </button>
       {:else}
-        <button class="primary" disabled={!!busy} on:click={() => run('connect', 'POST', '/api/connect')}>
+        {#if loadingTenants}
+          <p class="muted small center">Loading tenants…</p>
+        {:else if tenants.length > 1}
+          <label class="tenant">Tenant
+            <select bind:value={selectedTenant} disabled={!!busy}>
+              {#each tenants as t (t.id)}
+                <option value={t.id}>{t.name || t.id}</option>
+              {/each}
+            </select>
+          </label>
+        {:else if tenants.length === 1}
+          <p class="muted small center">Tenant: {tenants[0].name || tenants[0].id}</p>
+        {:else if tenantsLoaded}
+          <p class="muted small center warn-text">No tenant available — ask an admin to invite you.</p>
+        {/if}
+        <button
+          class="primary"
+          disabled={!!busy || (tenantsLoaded && tenants.length === 0)}
+          on:click={connect}
+        >
           {busy === 'connect' ? 'Connecting…' : 'Connect'}
         </button>
       {/if}
@@ -348,6 +408,27 @@
     background: transparent;
     color: #a9a9c4;
     border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .tenant {
+    display: block;
+    font-size: 12px;
+    color: #a9a9c4;
+  }
+  .tenant select {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 5px;
+    padding: 10px 11px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: #f5f5fa;
+    font-size: 14px;
+  }
+  .tenant select:focus {
+    outline: none;
+    border-color: #5b6bff;
   }
   .device {
     text-align: center;
