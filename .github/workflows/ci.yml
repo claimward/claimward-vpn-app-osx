@@ -1,0 +1,49 @@
+name: CI
+
+# This repository had only release.yml, which fires on `v*` tags -- so no lane
+# had ever built or tested a commit. Its build surface was measured rather than
+# assumed, and it is narrow:
+#
+#   darwin/amd64  cgo=1  ok     darwin/amd64  cgo=0  fails
+#   darwin/arm64  cgo=1  ok     darwin/arm64  cgo=0  fails
+#   linux, windows       fail regardless of cgo
+#
+# There is therefore no cross-build matrix -- there is nothing to cross-build
+# to. The two architectures are covered by two native runners instead, the same
+# shape the sibling nano-container-linux/openpubkey-agent lane uses. macos-13 is
+# deliberately not used: that image is retired and its jobs are never
+# scheduled, they sit queued for 24h before GitHub auto-cancels them.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: ${{ matrix.runner }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14        # Apple silicon
+            arch: arm64
+          - runner: macos-15-intel  # Intel
+            arch: amd64
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test -count=1 ./...
+      - run: go test -race -count=1 ./...
