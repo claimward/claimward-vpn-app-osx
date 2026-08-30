@@ -118,9 +118,13 @@ func (h *helper) connect(spec *hproto.ConnectSpec) hproto.Response {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	// Enroll gained a tenant argument. Empty is not a placeholder: the field is
+	// documented as "Empty lets the server pick when the user has exactly one",
+	// which is the behaviour this call had before the argument existed. The
+	// tenant picker is what will fill it in for users who belong to several.
 	resp, err := client.New(spec.ServerURL).Enroll(ctx, spec.Bearer, pair.Public, protocol.DeviceInfo{
 		Name: spec.DeviceName, OS: "darwin", Platform: "app-osx",
-	})
+	}, "")
 	if err != nil {
 		return hproto.Response{Error: "enroll: " + err.Error()}
 	}
