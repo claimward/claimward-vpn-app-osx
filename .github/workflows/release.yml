@@ -12,7 +12,7 @@ jobs:
   # Build (and, if signing secrets are present, sign + notarize) the DMG on a
   # GitHub-hosted Apple Silicon runner, then attach it to the release.
   dmg:
-    runs-on: macos-15
+    runs-on: macos-26
     env:
       # Optional signing/notarization secrets. When unset, the build is ad-hoc
       # signed (runs locally / in a VM, but Gatekeeper blocks a downloaded DMG).
@@ -23,7 +23,7 @@ jobs:
       AC_TEAM_ID: ${{ secrets.AC_TEAM_ID }}
       AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install pkgx
         run: curl -Ssf https://pkgx.sh | sh
@@ -56,14 +56,14 @@ jobs:
           xcrun stapler staple dist/Claimward.dmg
           xcrun stapler validate dist/Claimward.dmg
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Claimward-dmg
           path: dist/Claimward.dmg
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/Claimward.dmg
 
@@ -76,8 +76,8 @@ jobs:
     needs: dmg
     runs-on: [self-hosted, macOS, ARM64]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: Claimward-dmg
           path: dist
