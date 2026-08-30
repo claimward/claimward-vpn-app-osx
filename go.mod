@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	fyne.io/systray v1.12.2
-	github.com/claimward/claimward-vpn-client v0.0.0-20260611144032-9ecc63f38fc2
+	github.com/claimward/claimward-vpn-client v0.0.0-20260830090556-9e456404f74d
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 )
 
@@ -22,5 +22,5 @@ require (
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/grpc v1.81.1 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
 )
