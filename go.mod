@@ -4,12 +4,12 @@ go 1.26.4
 
 require (
 	fyne.io/systray v1.12.2
-	github.com/claimward/claimward-vpn-client v0.0.0-20260830131002-73c3fe67c707
+	github.com/claimward/claimward-vpn-client v0.0.0-20260903115152-38c5e4190eee
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 )
 
 require (
-	github.com/coreos/go-oidc/v3 v3.20.0 // indirect
+	github.com/coreos/go-oidc/v3 v3.21.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
