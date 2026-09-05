@@ -40,9 +40,15 @@ func (c *Client) Up(spec hproto.TunnelSpec) (*hproto.Response, error) {
 	return c.call(30*time.Second, hproto.Request{Action: hproto.ActionUp, Tunnel: &spec})
 }
 
-// Down tears the tunnel down.
-func (c *Client) Down() (*hproto.Response, error) {
-	return c.call(15*time.Second, hproto.Request{Action: hproto.ActionDown})
+// Down tears the tunnel down. The server creds let the helper deregister the
+// device first (best-effort) so the server drops the peer immediately; pass
+// empty strings to skip deregistration and only tear the tunnel down.
+func (c *Client) Down(serverURL, bearer, privateKey string) (*hproto.Response, error) {
+	req := hproto.Request{Action: hproto.ActionDown}
+	if serverURL != "" && bearer != "" && privateKey != "" {
+		req.Connect = &hproto.ConnectSpec{ServerURL: serverURL, Bearer: bearer, PrivateKey: privateKey}
+	}
+	return c.call(30*time.Second, req)
 }
 
 // UpdateRoutes applies a new routed CIDR set to the live tunnel.

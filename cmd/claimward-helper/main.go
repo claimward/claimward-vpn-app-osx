@@ -96,7 +96,7 @@ func (h *helper) handle(conn net.Conn) {
 	case hproto.ActionUp:
 		writeResp(conn, h.up(req.Tunnel))
 	case hproto.ActionDown:
-		writeResp(conn, h.down())
+		writeResp(conn, h.down(req.Connect))
 	case hproto.ActionStatus:
 		writeResp(conn, h.status())
 	case hproto.ActionUpdateRoutes:
@@ -198,7 +198,25 @@ func (h *helper) up(spec *hproto.TunnelSpec) hproto.Response {
 	return hproto.Response{OK: true, Connected: true, Interface: tun.Name()}
 }
 
-func (h *helper) down() hproto.Response {
+func (h *helper) down(spec *hproto.ConnectSpec) hproto.Response {
+	// Deregister from the server first so it drops the peer immediately instead
+	// of waiting for the lease to expire. The control plane is reachable without
+	// the tunnel (enroll happens before Up) and the root helper is exempt from
+	// macOS Local Network privacy. Best-effort: tear the tunnel down regardless.
+	if spec != nil && spec.ServerURL != "" && spec.Bearer != "" && spec.PrivateKey != "" {
+		if pair, err := wgkey.ParsePrivate(spec.PrivateKey); err != nil {
+			h.log.Error("deregister: bad private key", "err", err)
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			if err := client.New(spec.ServerURL).Deregister(ctx, spec.Bearer, pair.Public); err != nil {
+				h.log.Error("deregister failed", "err", err)
+			} else {
+				h.log.Info("deregistered from server")
+			}
+			cancel()
+		}
+	}
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.watchCancel != nil {
