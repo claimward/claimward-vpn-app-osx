@@ -10,7 +10,11 @@ const DefaultSocketPath = "/var/run/claimward-helper.sock"
 
 // Action values.
 const (
-	ActionUp           = "up"
+	ActionUp = "up"
+	// ActionDown tears the tunnel down. If the request carries a Connect spec,
+	// the helper also deregisters the device from the server first (best-effort)
+	// so the server drops the peer immediately instead of waiting for the lease
+	// to expire.
 	ActionDown         = "down"
 	ActionStatus       = "status"
 	ActionUpdateRoutes = "update-routes" // apply pushed routes to the live tunnel
@@ -27,7 +31,8 @@ type Request struct {
 	Tunnel *TunnelSpec `json:"tunnel,omitempty"` // required for ActionUp
 	// AllowedIPs is the new routed CIDR set for ActionUpdateRoutes.
 	AllowedIPs []string `json:"allowed_ips,omitempty"`
-	// Connect carries what the helper needs for ActionConnect.
+	// Connect carries what the helper needs for ActionConnect, and (optionally)
+	// for ActionDown to deregister the device before tearing the tunnel down.
 	Connect *ConnectSpec `json:"connect,omitempty"`
 }
 
