@@ -47,8 +47,13 @@ func runUI(url string) {
 	w.Navigate(url)
 	// webview_go never activates the app, so the window can open behind others
 	// (or off-screen) when spawned from the menu-bar agent. Force activation and
-	// raise the window on the UI thread once the run loop starts.
-	w.Dispatch(func() { bringToFront(w.Window()) })
+	// raise the window on the UI thread once the run loop starts, then keep it
+	// following app activation so re-opening it from the tray (when it's already
+	// running) brings it back to the front.
+	w.Dispatch(func() {
+		bringToFront(w.Window())
+		keepWindowFront(w.Window())
+	})
 	w.Run()
 }
 
