@@ -243,12 +243,18 @@ func (c *Core) Connect(_ context.Context) error {
 	return nil
 }
 
-// Disconnect tears the tunnel down (the helper also stops the route watch; the
-// server-side peer lease expires on its own).
+// Disconnect tears the tunnel down. It also hands the helper the server creds so
+// it can deregister the device (the helper does the server comms — the app is
+// blocked from LAN servers by macOS Local Network privacy), making the server
+// drop the peer immediately instead of waiting for the lease to expire.
 func (c *Core) Disconnect(_ context.Context) error {
 	c.logf("disconnecting…")
-	_, _, helper := c.deps()
-	_, derr := helper.Down()
+	cfg, _, helper := c.deps()
+	bearer, privKey := "", ""
+	if sess, _ := tokenstore.Load(); sess != nil {
+		bearer, privKey = sess.Bearer, sess.WGPrivateKey
+	}
+	_, derr := helper.Down(cfg.ServerURL, bearer, privKey)
 
 	c.mu.Lock()
 	c.connected = false
