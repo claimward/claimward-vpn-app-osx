@@ -1,6 +1,6 @@
 module github.com/claimward/claimward-vpn-app-osx
 
-go 1.26.4
+go 1.27.1
 
 require (
 	fyne.io/systray v1.12.2
