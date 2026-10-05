@@ -71,7 +71,7 @@ tasks:
     desc: Install the privileged helper as a root LaunchDaemon (sudo)
     deps: [build:helper]
     cmds:
-      - sudo ./scripts/install-helper.sh
+      - sudo ./scripts/install-helper.sh {{.SERVER}}
 
   uninstall-helper:
     desc: Remove the privileged helper LaunchDaemon (sudo)

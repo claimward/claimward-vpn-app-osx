@@ -26,6 +26,24 @@
       status = await api(method, path)
     } catch (e) {
       error = String(e.message || e)
+      // A refused connect may have offered tenants to choose from.
+      try {
+        status = await api('GET', '/api/status')
+      } catch {}
+    } finally {
+      busy = ''
+    }
+  }
+
+  // chooseTenant records the tenant for this session (a person may belong
+  // to several; the server enrolls into the one chosen).
+  async function chooseTenant(id) {
+    busy = 'tenant'
+    error = ''
+    try {
+      status = await api('POST', '/api/tenant', { id })
+    } catch (e) {
+      error = String(e.message || e)
     } finally {
       busy = ''
     }
@@ -76,6 +94,8 @@
   $: configOK = status && status.config_ok
   $: deviceCode = status && status.device_user_code
   $: signInURL = status && status.device_verification_uri
+  $: tenants = (status && status.tenants) || []
+  $: tenantRequired = status && status.tenant_required
 </script>
 
 <main>
@@ -145,6 +165,32 @@
 
     {#if status.email}
       <p class="muted small center">Signed in as {status.email}</p>
+    {/if}
+
+    {#if loggedIn && !connected}
+      {#if tenants.length > 1}
+        <div class="card tenant">
+          <label class="muted small" for="tenant">Tenant for this session</label>
+          <select id="tenant" value={status.tenant || ''} disabled={!!busy} on:change={(e) => chooseTenant(e.target.value)}>
+            {#if !status.tenant}<option value="" disabled>Choose…</option>{/if}
+            {#each tenants as t}
+              <option value={t.id}>{t.name || t.id}</option>
+            {/each}
+          </select>
+          {#if tenantRequired && !status.tenant}
+            <p class="muted small">You belong to several tenants: choose the one to connect to.</p>
+          {/if}
+        </div>
+      {:else if !tenants.length}
+        <p class="muted small center">
+          <button class="link" disabled={!!busy} on:click={() => run('tenants', 'GET', '/api/tenants')}>
+            {busy === 'tenants' ? 'Asking the server…' : 'Choose a tenant…'}
+          </button>
+        </p>
+      {/if}
+    {/if}
+    {#if connected && status.tenant}
+      <p class="muted small center">Tenant: {status.tenant}</p>
     {/if}
 
     {#if signInURL}
@@ -409,5 +455,20 @@
     padding: 1px 5px;
     border-radius: 5px;
     font-size: 11px;
+  }
+  .tenant select {
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    font: inherit;
+  }
+  button.link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
   }
 </style>
