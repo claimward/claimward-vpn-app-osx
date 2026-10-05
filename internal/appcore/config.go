@@ -14,7 +14,7 @@ import (
 type Config struct {
 	ServerURL string `json:"server_url"` // claimward-vpn-server base URL
 
-	Provider       string `json:"provider"`         // "github" (default) | "oidc"
+	Provider       string `json:"provider"`         // "github" (default) | "oidc" | "go-authn"
 	GitHubClientID string `json:"github_client_id"` // GitHub OAuth app client id (device flow)
 
 	OIDCIssuer   string `json:"oidc_issuer"`    // OIDC issuer (discovery)
@@ -60,7 +60,7 @@ func (c *Config) Validate() error {
 		if c.GitHubClientID == "" {
 			missing = append(missing, "github_client_id")
 		}
-	case "oidc":
+	case "oidc", "go-authn":
 		if c.OIDCIssuer == "" {
 			missing = append(missing, "oidc_issuer")
 		}
@@ -68,7 +68,7 @@ func (c *Config) Validate() error {
 			missing = append(missing, "oidc_client_id")
 		}
 	default:
-		return errors.New("invalid provider: " + c.Provider + ` (want "github" or "oidc")`)
+		return errors.New("invalid provider: " + c.Provider + ` (want "github", "oidc" or "go-authn")`)
 	}
 	if len(missing) > 0 {
 		return errors.New("missing config: " + join(missing))

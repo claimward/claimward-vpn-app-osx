@@ -210,7 +210,7 @@ func (c *Core) Login(ctx context.Context) error {
 // Connect asks the (root) helper to enroll, bring up the tunnel and watch routes.
 // The server comms live in the helper because macOS Local Network privacy blocks
 // the unprivileged app from reaching a LAN server.
-func (c *Core) Connect(_ context.Context) error {
+func (c *Core) Connect(ctx context.Context) error {
 	cfg, _, helper := c.deps()
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -227,8 +227,22 @@ func (c *Core) Connect(_ context.Context) error {
 	}
 
 	host, _ := os.Hostname()
+	provider, err := auth.New(authConfig(cfg))
+	if err != nil {
+		return err
+	}
+	bearer, changed, err := bearerFor(ctx, provider, sess, host)
+	if err != nil {
+		c.logf("connect: registering the device key FAILED: %v", err)
+		return err
+	}
+	if changed {
+		if err := tokenstore.Save(sess); err != nil {
+			return err
+		}
+	}
 	c.logf("connect: helper enrolling at %s and bringing up the tunnel…", cfg.ServerURL)
-	hresp, err := helper.Connect(cfg.ServerURL, sess.Bearer, sess.WGPrivateKey, host)
+	hresp, err := helper.Connect(cfg.ServerURL, bearer, sess.WGPrivateKey, host)
 	if err != nil {
 		c.logf("connect FAILED: %v", err)
 		return err
@@ -282,4 +296,27 @@ func emailFromIDToken(idToken string) string {
 		return ""
 	}
 	return claims.Email
+}
+
+// bearerFor is the credential to enroll with. For most providers it is the
+// session's own. A provider that keeps the devices' WireGuard keys itself
+// (go-authn, auth.KeyRegistrar) has the device's PUBLIC key registered first,
+// and the token for the server is the one that registration returns; the
+// session's refresh token is then replaced, since the provider rotates them,
+// and changed says the session must be saved.
+func bearerFor(ctx context.Context, provider auth.Provider, sess *tokenstore.Session, device string) (bearer string, changed bool, err error) {
+	reg, ok := provider.(auth.KeyRegistrar)
+	if !ok {
+		return sess.Bearer, false, nil
+	}
+	pair, err := wgkey.ParsePrivate(sess.WGPrivateKey)
+	if err != nil {
+		return "", false, fmt.Errorf("device key invalid, sign in again: %w", err)
+	}
+	tok, err := reg.RegisterKey(ctx, &auth.Token{Value: sess.Bearer, Kind: auth.Kind(sess.BearerKind), Expiry: sess.Expiry, Refresh: sess.RefreshToken}, pair.Public.String(), device)
+	if err != nil {
+		return "", false, err
+	}
+	sess.RefreshToken = tok.Refresh
+	return tok.Value, true, nil
 }
