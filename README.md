@@ -100,6 +100,23 @@ To use an OIDC provider instead:
 }
 ```
 
+Or a [go-authn](https://github.com/go-authn/bridge) provider, an OpenID Connect
+provider in front of a SAML federation such as RENATER, which also keeps whose
+each WireGuard key is (the server runs with `AUTH_PROVIDER=go-authn`):
+
+```json
+{
+  "server_url": "https://vpn.example.com",
+  "provider": "go-authn",
+  "oidc_issuer": "https://login.example.org",
+  "oidc_client_id": "claimward"
+}
+```
+
+Sign-in is the provider's device flow. At every connection the app registers
+the device's **public** key there (the private key stays in the session store),
+and enrolls with the token that registration returns.
+
 ## Install the helper, then run
 
 ```sh
