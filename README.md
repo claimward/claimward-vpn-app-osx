@@ -39,10 +39,13 @@ processes; and tunnel setup needs root, which the unprivileged app must not have
 |------|------|
 | `cmd/claimward-app` | tray process (+ `ui` subcommand = webview window) |
 | `cmd/claimward-helper` | privileged root daemon (LaunchDaemon) |
-| `internal/appcore` | login / enroll / connect logic + config |
 | `internal/uiserver` | embedded Svelte SPA + loopback JSON API |
-| `internal/helperclient` | app→helper socket client |
-| `internal/hproto` | helper wire protocol |
+
+The app's logic (sign-in, tenant choice, connect) and the helper's
+(`pkg/appcore`, `pkg/helper`, `pkg/hproto`, `pkg/helperclient`) are in
+[claimward-vpn-client](https://github.com/claimward/claimward-vpn-client), shared
+with the Linux and Windows apps. This repository is the macOS shell around
+them.
 | `frontend/` | Svelte + Vite UI (builds to `internal/uiserver/dist`) |
 | `deploy/`, `scripts/` | LaunchDaemon plist + install/uninstall |
 
@@ -52,7 +55,7 @@ With [go-task](https://taskfile.dev) (`pkgx install task`):
 
 ```sh
 task config:init     # write a starter ~/Library/Application Support/Claimward/config.json
-task install-helper  # build + install the root helper (asks for sudo)
+task install-helper SERVER=https://vpn.example.org  # build + install the root helper (asks for sudo)
 task start:bundle    # build Claimward.app and launch it (recommended)
 ```
 
@@ -120,18 +123,32 @@ and enrolls with the token that registration returns.
 ## Install the helper, then run
 
 ```sh
-sudo ./scripts/install-helper.sh   # root LaunchDaemon + Unix socket
+sudo ./scripts/install-helper.sh https://vpn.example.org   # root LaunchDaemon + Unix socket
 ./bin/claimward-app                # tray app; click Connect
 ```
 
-## MVP notes / hardening TODO
+## Tenants
 
-- The helper socket is `0666` for the MVP. Before shipping: dedicated group +
-  `0660`, and verify the peer's credentials (and ideally code-sign + SMJobBless).
-- Session tokens live in a `0600` file (via `claimward-vpn-client/pkg/tokenstore`);
-  graduate to the macOS Keychain.
-- DNS push and split-tunnel polish are TODO (see `pkg/wgtun`).
-- App is not yet bundled as a signed `.app`/notarized; that's packaging work.
+A person may belong to several tenants (claimward-vpn-server matches them on
+email domain, groups and institution). The window offers the tenants once the
+server says there is a choice, or on request ("Choose a tenant…"), and the
+choice holds for the session; a new sign-in forgets it. A Connect from the
+menu bar that the server refuses for want of a choice opens the window.
+
+## Security
+
+- **The helper enrolls only with the servers named at install**
+  (`/Library/Application Support/Claimward/helper.json`, root's, writable by
+  root alone). It runs as root, and anything that can reach its socket could
+  otherwise point it at a server of its own, answering with routes for every
+  packet of the machine. It takes no tunnel configuration from a request.
+- **Its socket is `0660`, `root:admin`.** Until this release it was `0666`,
+  so any local process could drive it.
+- The loopback UI API is guarded by a per-launch token, compared in constant
+  time.
+- A route watch carries the bearer token, and runs over TLS (claimward-vpn-client).
+- Session tokens live in a `0600` file (`pkg/tokenstore`); the Keychain is
+  still to come, as are code signing with SMJobBless and DNS push polish.
 
 ## Release & CI
 

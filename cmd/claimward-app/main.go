@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"os/exec"
@@ -20,9 +21,9 @@ import (
 	"time"
 
 	"fyne.io/systray"
-	"github.com/claimward/claimward-vpn-app-osx/internal/appcore"
 	"github.com/claimward/claimward-vpn-app-osx/internal/brand"
 	"github.com/claimward/claimward-vpn-app-osx/internal/uiserver"
+	"github.com/claimward/claimward-vpn-client/pkg/appcore"
 	webview "github.com/webview/webview_go"
 )
 
@@ -175,6 +176,11 @@ func (a *trayApp) connect() {
 	}
 	if err := a.core.Connect(ctx); err != nil {
 		log.Printf("connect: %v", err)
+		// A person in several tenants chooses one in the window: open it
+		// rather than fail silently from the menu bar.
+		if errors.Is(err, appcore.ErrTenantRequired) {
+			a.openDashboard("")
+		}
 	}
 }
 

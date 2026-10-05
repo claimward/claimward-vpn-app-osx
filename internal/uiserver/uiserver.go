@@ -10,17 +10,19 @@ package uiserver
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/claimward/claimward-vpn-app-osx/internal/appcore"
+	"github.com/claimward/claimward-vpn-client/pkg/appcore"
 	"github.com/claimward/claimward-vpn-client/pkg/browser"
 )
 
@@ -58,6 +60,8 @@ func Start(core *appcore.Core) (*Server, error) {
 	mux.HandleFunc("/api/connect", s.guard(s.handleConnect))
 	mux.HandleFunc("/api/disconnect", s.guard(s.handleDisconnect))
 	mux.HandleFunc("/api/logout", s.guard(s.handleLogout))
+	mux.HandleFunc("/api/tenants", s.guard(s.handleTenants))
+	mux.HandleFunc("/api/tenant", s.guard(s.handleTenant))
 
 	s.http = &http.Server{Handler: mux}
 	s.url = fmt.Sprintf("http://%s/?t=%s", ln.Addr().String(), s.token)
@@ -81,7 +85,7 @@ func (s *Server) guard(h http.HandlerFunc) http.HandlerFunc {
 		if tok == "" {
 			tok = r.URL.Query().Get("t")
 		}
-		if tok != s.token {
+		if subtle.ConstantTimeCompare([]byte(tok), []byte(s.token)) != 1 {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -158,6 +162,37 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if err := s.core.Logout(ctx); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, s.core.Status())
+}
+
+// handleTenants asks the server which tenants the person may connect to.
+func (s *Server) handleTenants(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+	if _, err := s.core.Tenants(ctx); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, s.core.Status())
+}
+
+// handleTenant records the tenant chosen for this session.
+func (s *Server) handleTenant(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST", http.StatusMethodNotAllowed)
+		return
+	}
+	var in struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&in); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := s.core.SetTenant(in.ID); err != nil {
 		writeErr(w, err)
 		return
 	}
