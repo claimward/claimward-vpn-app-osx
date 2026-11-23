@@ -192,6 +192,9 @@ func (a *trayApp) connect() {
 	}
 }
 
+// osExecutable is os.Executable; a test replaces it.
+var osExecutable = os.Executable
+
 // openDashboard shows the webview window.
 //
 // When running inside a Claimward.app bundle (the supported way), it launches
@@ -203,7 +206,7 @@ func (a *trayApp) openDashboard(frag string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	exe, err := os.Executable()
+	exe, err := osExecutable()
 	if err != nil {
 		log.Printf("open dashboard: executable path: %v", err)
 		return

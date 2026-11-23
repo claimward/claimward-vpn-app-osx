@@ -1,6 +1,7 @@
 package handoff
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,6 +74,41 @@ func TestReadRefusesAStrangerFileAndASymlink(t *testing.T) {
 	}
 	if _, err := Read(filepath.Join(dir, "url")); err == nil || !strings.Contains(err.Error(), "private regular") {
 		t.Errorf("a symlink: %v", err)
+	}
+}
+
+func TestWriteRemovesItsDirectoryWhenTheFileCannotBeWritten(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	old := writeFile
+	t.Cleanup(func() { writeFile = old })
+	writeFile = func(string, []byte, os.FileMode) error { return errors.New("disk full") }
+	if p, err := Write("u"); err == nil || !strings.Contains(err.Error(), "disk full") || p != "" {
+		t.Fatalf("Write = %q, %v", p, err)
+	}
+	left, err := os.ReadDir(tmp)
+	if err != nil || len(left) != 0 {
+		t.Errorf("left behind: %v, %v", left, err)
+	}
+}
+
+func TestReadReportsAnUnreadableFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads anything")
+	}
+	p, err := Write("u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(filepath.Dir(p)) })
+	if err := os.Chmod(p, 0o200); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(p); err == nil || !strings.Contains(err.Error(), "permission") {
+		t.Errorf("Read = %v, want the read error", err)
+	}
+	if _, err := os.Stat(filepath.Dir(p)); err != nil {
+		t.Errorf("the directory was removed although nothing was read: %v", err)
 	}
 }
 

@@ -14,6 +14,9 @@ import (
 
 const dirPrefix = "claimward-ui-"
 
+// writeFile is os.WriteFile; a test replaces it to fail after the directory exists.
+var writeFile = os.WriteFile
+
 // Write stores url in a new 0600 file inside a new 0700 directory and returns
 // the file's path.
 func Write(url string) (string, error) {
@@ -22,7 +25,7 @@ func Write(url string) (string, error) {
 		return "", err
 	}
 	p := filepath.Join(dir, "url")
-	if err := os.WriteFile(p, []byte(url), 0o600); err != nil {
+	if err := writeFile(p, []byte(url), 0o600); err != nil {
 		os.RemoveAll(dir)
 		return "", err
 	}
