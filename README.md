@@ -155,13 +155,18 @@ menu bar that the server refuses for want of a choice opens the window.
 - **Its socket, `/var/run/claimward-helper.sock`, is `0660`, `root:admin`.**
   Before v0.1.0 it was `0666`, so any local process could drive it.
 - The loopback UI API is guarded by a per-launch token, compared in constant
-  time.
+  time and accepted in the `X-Claimward-Token` header only, never in a query
+  string. The tray hands the dashboard its URL (which holds the token) through a
+  `0600` file in a `0700` directory that the dashboard reads and deletes, so the
+  token is on no command line and in no log. `POST /api/config` cannot change
+  the helper socket (claimward-vpn-client v0.4.0).
 - A route watch carries the bearer token, and runs over TLS (claimward-vpn-client).
-- Session tokens and the device key live in a `0600` file (`pkg/tokenstore`,
-  under `~/Library/Application Support`). Not done yet: the Keychain, installing
-  the helper with SMJobBless (it is installed by `scripts/install-helper.sh`),
-  and applying the server's DNS push (`pkg/wgtun` carries it but does not set
-  it on macOS).
+- Session tokens and the device key live in the login Keychain, sealed through
+  `pkg/tokenstore` (claimward-vpn-client v0.4.0); a `0600` file from an older
+  version is moved into it on first start. `CLAIMWARD_ALLOW_PLAINTEXT_SESSION=1`
+  opts back into the file. Not done yet: installing the helper with SMJobBless
+  (it is installed by `scripts/install-helper.sh`), and applying the server's DNS
+  push (`pkg/wgtun` carries it but does not set it on macOS).
 
 ## Release & CI
 
