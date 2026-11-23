@@ -7,7 +7,8 @@
 // Two modes:
 //
 //	claimward-app          run the tray (default)
-//	claimward-app ui <url> run a webview window for <url> (spawned by the tray)
+//	claimward-app ui <file> run a webview window for the URL held in <file>, a
+//	                        private handoff file the tray wrote (spawned by the tray)
 package main
 
 import (
@@ -22,6 +23,7 @@ import (
 
 	"fyne.io/systray"
 	"github.com/claimward/claimward-vpn-app-osx/internal/brand"
+	"github.com/claimward/claimward-vpn-app-osx/internal/handoff"
 	"github.com/claimward/claimward-vpn-app-osx/internal/uiserver"
 	"github.com/claimward/claimward-vpn-client/pkg/appcore"
 	webview "github.com/webview/webview_go"
@@ -29,7 +31,13 @@ import (
 
 func main() {
 	if len(os.Args) >= 3 && os.Args[1] == "ui" {
-		runUI(os.Args[2])
+		// The argument is a handoff file, never the URL: the URL holds the
+		// access token and argv is readable by every local user.
+		url, err := handoff.Read(os.Args[2])
+		if err != nil {
+			log.Fatalf("ui: %v", err)
+		}
+		runUI(url)
 		return
 	}
 	runTray()
@@ -200,35 +208,44 @@ func (a *trayApp) openDashboard(frag string) {
 		log.Printf("open dashboard: executable path: %v", err)
 		return
 	}
-	url := a.ui.URL() + frag
+	// The URL holds the access token: it goes to the dashboard in a private
+	// file, and never on a command line or in the log.
+	file, err := handoff.Write(a.ui.URL() + frag)
+	if err != nil {
+		log.Printf("open dashboard: %v", err)
+		return
+	}
 
 	if dash := dashboardBundle(exe); dash != "" {
 		// `open` (without -n) launches the dashboard or, if already running,
 		// just brings it to the front.
-		cmd := exec.Command("open", dash, "--args", "ui", url)
+		cmd := exec.Command("open", dash, "--args", "ui", file)
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 		if err := cmd.Run(); err != nil {
+			os.RemoveAll(filepath.Dir(file))
 			log.Printf("open dashboard: %v", err)
 			return
 		}
-		log.Printf("opened dashboard (bundled): %s", url)
+		log.Printf("opened dashboard (bundled)")
 		return
 	}
 
 	// Dev fallback (no .app bundle): direct exec.
 	if a.uiCmd != nil && a.uiCmd.ProcessState == nil {
+		os.RemoveAll(filepath.Dir(file))
 		log.Printf("dashboard already open")
 		return
 	}
-	cmd := exec.Command(exe, "ui", url)
+	cmd := exec.Command(exe, "ui", file)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
+		os.RemoveAll(filepath.Dir(file))
 		log.Printf("open dashboard: start failed: %v", err)
 		return
 	}
 	a.uiCmd = cmd
 	go func() { _ = cmd.Wait(); a.clearUICmd() }()
-	log.Printf("opened dashboard (dev, may open in background — use `task bundle`): %s", url)
+	log.Printf("opened dashboard (dev, may open in background — use `task bundle`)")
 }
 
 // dashboardBundle returns the path to the nested Dashboard.app when exe lives in

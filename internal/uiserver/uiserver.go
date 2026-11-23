@@ -81,10 +81,9 @@ func (s *Server) Close() {
 
 func (s *Server) guard(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Header only: a token in the query string lands in logs, history and
+		// Referer headers.
 		tok := r.Header.Get("X-Claimward-Token")
-		if tok == "" {
-			tok = r.URL.Query().Get("t")
-		}
 		if subtle.ConstantTimeCompare([]byte(tok), []byte(s.token)) != 1 {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
