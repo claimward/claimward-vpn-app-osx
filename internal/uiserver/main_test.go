@@ -4,12 +4,13 @@ import (
 	"net/http"
 	"os"
 	"testing"
+
+	"github.com/claimward/claimward-vpn-client/pkg/tokenstore"
 )
 
-// TestMain keeps the tests off the real Keychain: they run with the 0600 file
-// session opt-in, in a temporary HOME (see start).
+// TestMain keeps the tests off the real Keychain: the session lives in memory.
 func TestMain(m *testing.M) {
-	os.Setenv("CLAIMWARD_ALLOW_PLAINTEXT_SESSION", "1")
+	tokenstore.UseMemory()
 	os.Exit(m.Run())
 }
 
