@@ -162,9 +162,9 @@ menu bar that the server refuses for want of a choice opens the window.
   the helper socket (claimward-vpn-client v0.4.0).
 - A route watch carries the bearer token, and runs over TLS (claimward-vpn-client).
 - Session tokens and the device key live in the login Keychain, sealed through
-  `pkg/tokenstore` (claimward-vpn-client v0.4.0); a `0600` file from an older
-  version is moved into it on first start. `CLAIMWARD_ALLOW_PLAINTEXT_SESSION=1`
-  opts back into the file. Not done yet: installing the helper with SMJobBless
+  `pkg/tokenstore` (claimward-vpn-client v0.5.0); a `0600` file from an older
+  version is moved into it on first start. There is no plaintext fallback: if
+  the Keychain is locked or unavailable, sign-in fails and says so. Not done yet: installing the helper with SMJobBless
   (it is installed by `scripts/install-helper.sh`), and applying the server's DNS
   push (`pkg/wgtun` carries it but does not set it on macOS).
 

@@ -9,10 +9,12 @@ import (
 	"testing"
 
 	"github.com/claimward/claimward-vpn-client/pkg/appcore"
+	"github.com/claimward/claimward-vpn-client/pkg/tokenstore"
 )
 
 func start(t *testing.T) (*Server, string, string) {
 	t.Helper()
+	t.Cleanup(tokenstore.UseMemory()) // a fresh, empty session per test
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
