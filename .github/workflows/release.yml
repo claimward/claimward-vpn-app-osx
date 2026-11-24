@@ -45,7 +45,7 @@ jobs:
         run: |
           # Use the Developer ID identity when provided, else ad-hoc.
           [ -n "$MACOS_SIGN_IDENTITY" ] && export CLAIMWARD_SIGN_ID="$MACOS_SIGN_IDENTITY"
-          pkgx +go.dev +nodejs.org task dmg
+          pkgx +go.dev task dmg
 
       - name: Notarize and staple
         if: env.AC_APPLE_ID != '' && env.MACOS_SIGN_IDENTITY != ''

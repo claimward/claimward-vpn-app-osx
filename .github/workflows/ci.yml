@@ -1,18 +1,21 @@
 name: CI
 
-# This repository had only release.yml, which fires on `v*` tags -- so no lane
-# had ever built or tested a commit. Its build surface was measured rather than
-# assumed, and it is narrow:
+# The app is macOS-only (go-widgets' Cocoa back-end, cgo): there is nothing to
+# cross-build. The two architectures are covered by two native runners.
+# macos-13 is deliberately not used: that image is retired and its jobs sit
+# queued for 24h before GitHub auto-cancels them.
 #
-#   darwin/amd64  cgo=1  ok     darwin/amd64  cgo=0  fails
-#   darwin/arm64  cgo=1  ok     darwin/arm64  cgo=0  fails
-#   linux, windows       fail regardless of cgo
-#
-# There is therefore no cross-build matrix -- there is nothing to cross-build
-# to. The two architectures are covered by two native runners instead, the same
-# shape the sibling nano-container-linux/openpubkey-agent lane uses. macos-13 is
-# deliberately not used: that image is retired and its jobs are never
-# scheduled, they sit queued for 24h before GitHub auto-cancels them.
+#   build-test  (both archs)  gofmt, vet, build, tests with internal/ui at 100%
+#                             coverage, race.
+#   mvvm                      the go-widgets MVVM gate (mvvmlint): no direct
+#                             widget-state writes.
+#   bricolint                 the hand-drawn-UI gate, with its negative control.
+#   launch      (arm64)       builds Claimward.app, launches it, and reads the
+#                             accessibility tree: the NSStatusItem and the window
+#                             must be there. The native text fields and pop-up
+#                             sit on the Settings page, behind a painted button
+#                             the tree does not expose; internal/ui tests assert
+#                             them. (No password field, so no secure text field.)
 
 on:
   push:
@@ -43,7 +46,58 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - run: go vet ./...
       - run: go build ./...
-      - run: go test -count=1 ./...
+      - name: Tests (internal/ui at 100%)
+        run: |
+          go test -count=1 -coverprofile=coverage.out ./...
+          ui=$(go tool cover -func=coverage.out | grep '/internal/ui/' | grep -v '100.0%' || true)
+          if [ -n "$ui" ]; then echo "::error::internal/ui below 100%"; echo "$ui"; exit 1; fi
       - run: go test -race -count=1 ./...
+
+  mvvm:
+    name: MVVM gate
+    uses: go-widgets/mvvmlint/.github/workflows/mvvmlint.yml@main
+    with:
+      # The reusable workflow still defaults to 1.27.1, below this module's go directive.
+      go-version: '1.27.4'
+
+  bricolint:
+    name: Hand-drawn-UI gate
+    runs-on: macos-15
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go install github.com/go-widgets/bricolint/cmd/bricolint@v0.4.0
+      - run: go vet -vettool="$(go env GOPATH)/bin/bricolint" ./...
+      - name: Negative control (the guard must bite)
+        run: BRICOLINT="$(go env GOPATH)/bin/bricolint" bash hack/bricolint-negative-control.sh
+
+  launch:
+    name: launch the bundle (status item, native controls)
+    runs-on: macos-15
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go install github.com/go-task/task/v3/cmd/task@v3.45.4
+      - run: "$(go env GOPATH)/bin/task bundle"
+      - name: Launch and read the accessibility tree
+        run: |
+          open dist/Claimward.app
+          sleep 20
+          osascript hack/axcheck.applescript | tee ax.txt
+          grep -q '^status items: 1' ax.txt
+          grep -q '^windows: 1' ax.txt
+          grep -q '^title: Claimward VPN' ax.txt

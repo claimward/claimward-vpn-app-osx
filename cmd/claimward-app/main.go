@@ -1,281 +1,92 @@
-// Command claimward-app is the Claimward macOS client.
+// SPDX-License-Identifier: BSD-3-Clause
+
+// Command claimward-app is the Claimward VPN desktop app for macOS: a window
+// and a menu-bar status item, drawn by go-widgets with the system's own text
+// fields and pop-up buttons embedded in it, that signs the person in, lets
+// them choose a tenant, and asks the privileged helper (cmd/claimward-helper)
+// to bring the tunnel up and down.
 //
-// It runs as a menu-bar (tray) application. The tray process owns all state and
-// exposes a loopback HTTP API + the embedded Svelte UI; the user-facing window
-// is a thin webview pointed at that loopback URL.
-//
-// Two modes:
-//
-//	claimward-app          run the tray (default)
-//	claimward-app ui <file> run a webview window for the URL held in <file>, a
-//	                        private handoff file the tray wrote (spawned by the tray)
+// It runs unprivileged, from the Claimward.app bundle: notifications need the
+// bundle (UNUserNotificationCenter refuses a bare binary, and the app logs
+// that and goes on).
 package main
 
 import (
-	"context"
-	"errors"
+	"fmt"
 	"log"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"sync"
 	"time"
 
-	"fyne.io/systray"
 	"github.com/claimward/claimward-vpn-app-osx/internal/brand"
-	"github.com/claimward/claimward-vpn-app-osx/internal/handoff"
-	"github.com/claimward/claimward-vpn-app-osx/internal/uiserver"
+	"github.com/claimward/claimward-vpn-app-osx/internal/ui"
 	"github.com/claimward/claimward-vpn-client/pkg/appcore"
-	webview "github.com/webview/webview_go"
+	"github.com/go-widgets/application"
+	"github.com/go-widgets/tray"
 )
 
+// windowTitle names the window.
+const windowTitle = "Claimward VPN"
+
+// version is set at build time (-ldflags "-X main.version=...").
+var version = "dev"
+
 func main() {
-	if len(os.Args) >= 3 && os.Args[1] == "ui" {
-		// The argument is a handoff file, never the URL: the URL holds the
-		// access token and argv is readable by every local user.
-		url, err := handoff.Read(os.Args[2])
-		if err != nil {
-			log.Fatalf("ui: %v", err)
-		}
-		runUI(url)
-		return
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "claimward-app:", err)
+		os.Exit(1)
 	}
-	runTray()
 }
 
-// runUI is the webview subprocess: a chromeless window rendering the Svelte SPA.
-func runUI(url string) {
-	w := webview.New(false)
-	defer w.Destroy()
-	w.SetTitle("Claimward")
-	// HintNone sets the actual initial window size. HintMin only constrains the
-	// minimum and leaves the window at 0x0 (invisible), so use HintNone here and
-	// add a minimum separately.
-	w.SetSize(440, 660, webview.HintNone)
-	w.SetSize(360, 480, webview.HintMin)
-	w.Navigate(url)
-	// webview_go never activates the app, so the window can open behind others
-	// (or off-screen) when spawned from the menu-bar agent. Force activation and
-	// raise the window on the UI thread once the run loop starts.
-	w.Dispatch(func() { bringToFront(w.Window()) })
-	w.Run()
-}
-
-func runTray() {
+func run() error {
 	cfg, err := appcore.LoadConfig()
 	if err != nil {
-		// Don't die on a bad/unreadable config — start unconfigured so the user
-		// can fix it from the menu (Configuration…).
-		log.Printf("config: %v (starting unconfigured)", err)
+		// An unreadable config starts the app unconfigured, on the Settings
+		// page, rather than not at all: it is how the person repairs it.
+		log.Printf("claimward-app: load %s: %v (starting unconfigured)", appcore.ConfigPath(), err)
 		cfg = &appcore.Config{Provider: "github"}
 	}
 	core := appcore.New(cfg)
 
-	ui, err := uiserver.Start(core)
-	if err != nil {
-		log.Fatalf("ui server: %v", err)
+	queue := &ui.Queue{}
+	vm := ui.NewViewModel(core,
+		ui.WithPost(queue.Post),
+		ui.WithOpener(application.OpenURL),
+		ui.WithInterval(2*time.Second, 500*time.Millisecond),
+		ui.WithConfigPath("Saved to "+appcore.ConfigPath()),
+	)
+	if err := ui.UseOpenTypeText(); err != nil {
+		log.Printf("claimward-app: falling back to the bitmap font: %v", err)
 	}
+	view := ui.NewView(vm, queue)
+	defer view.Close()
 
-	app := &trayApp{core: core, ui: ui}
-	systray.Run(app.onReady, ui.Close)
-}
+	vm.Start()
+	defer vm.Stop()
 
-type trayApp struct {
-	core *appcore.Core
-	ui   *uiserver.Server
+	t := tray.New(brand.TrayTemplate).SetTooltip("Claimward")
+	// application.Run keeps the window's backend to itself, so the window cannot
+	// be raised again once hidden; it is never hidden (closing it quits), and
+	// "Open" brings the app to the front.
+	openWindow := func() { activate() }
+	unbind := ui.BindTray(t, vm, queue.Post, ui.TrayActions{
+		Open: openWindow,
+		Quit: func() { os.Exit(0) },
+	})
+	defer unbind()
+	// The tunnel dropping or the session expiring is told to the person who is
+	// not looking at the window. A notification that cannot be shown is logged.
+	defer ui.BindNotifications(t, vm, openWindow, log.Printf)()
+	defer t.Quit()
 
-	mu    sync.Mutex
-	uiCmd *exec.Cmd
-}
-
-func (a *trayApp) onReady() {
-	// Show the brand mark in the menu bar instead of a text title. The icon is a
-	// macOS template image, so the system tints it for light/dark menu bars.
-	systray.SetTemplateIcon(brand.TrayTemplate, brand.TrayTemplate)
-	systray.SetTitle("")
-	systray.SetTooltip("Claimward VPN")
-
-	mStatus := systray.AddMenuItem("Disconnected", "Current status")
-	mStatus.Disable()
-	systray.AddSeparator()
-	mOpen := systray.AddMenuItem("Open Claimward…", "Open the dashboard window")
-	mSettings := systray.AddMenuItem("Configuration…", "Edit Claimward settings")
-	mConnect := systray.AddMenuItem("Connect", "Authenticate and bring up the tunnel")
-	mDisconnect := systray.AddMenuItem("Disconnect", "Tear down the tunnel")
-	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("Quit", "Quit Claimward")
-
-	refresh := func() {
-		st := a.core.Status()
-		switch {
-		case !st.ConfigOK:
-			mStatus.SetTitle("⚠︎ Not configured")
-		case st.Connected:
-			label := "● Connected"
-			if st.AssignedIP != "" {
-				label = "● Connected (" + st.AssignedIP + ")"
+	spec := application.Spec{Name: "Claimward", Identifier: "com.claimward.app", Version: version}
+	return application.Run(spec, application.Config{Title: windowTitle, Width: 460, Height: 720}, view, func() {
+		// The status item joins once the window's loop runs. It is not a
+		// Spec.Tray because that builds its menu once, and the binding above
+		// changes the menu as the status changes.
+		go func() {
+			if err := t.Attach(); err != nil {
+				log.Printf("claimward-app: no status item: %v", err)
 			}
-			mStatus.SetTitle(label)
-		case st.LoggedIn:
-			mStatus.SetTitle("○ Signed in — disconnected")
-		default:
-			mStatus.SetTitle("○ Signed out")
-		}
-		setEnabled(mConnect, st.ConfigOK && !st.Connected)
-		setEnabled(mDisconnect, st.Connected)
-	}
-	refresh()
-
-	// Each menu item is handled in its own goroutine, and status refresh runs
-	// separately, so a slow/blocked helper call can never starve menu clicks.
-	go func() {
-		ticker := time.NewTicker(4 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			refresh()
-		}
-	}()
-
-	go func() {
-		for range mOpen.ClickedCh {
-			a.openDashboard("")
-		}
-	}()
-
-	go func() {
-		for range mSettings.ClickedCh {
-			a.openDashboard("#settings")
-		}
-	}()
-
-	go func() {
-		for range mConnect.ClickedCh {
-			a.connect()
-			refresh()
-		}
-	}()
-
-	go func() {
-		for range mDisconnect.ClickedCh {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			if err := a.core.Disconnect(ctx); err != nil {
-				log.Printf("disconnect: %v", err)
-			}
-			cancel()
-			refresh()
-		}
-	}()
-
-	go func() {
-		<-mQuit.ClickedCh
-		systray.Quit()
-	}()
-}
-
-// connect signs in if needed, then brings up the tunnel.
-func (a *trayApp) connect() {
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
-	defer cancel()
-	if !a.core.Status().LoggedIn {
-		if err := a.core.Login(ctx); err != nil {
-			log.Printf("login: %v", err)
-			return
-		}
-	}
-	if err := a.core.Connect(ctx); err != nil {
-		log.Printf("connect: %v", err)
-		// A person in several tenants chooses one in the window: open it
-		// rather than fail silently from the menu bar.
-		if errors.Is(err, appcore.ErrTenantRequired) {
-			a.openDashboard("")
-		}
-	}
-}
-
-// osExecutable is os.Executable; a test replaces it.
-var osExecutable = os.Executable
-
-// openDashboard shows the webview window.
-//
-// When running inside a Claimward.app bundle (the supported way), it launches
-// the nested Dashboard.app via `open`, so LaunchServices activates it in the
-// foreground — a bare binary spawned from a menu-bar agent stays behind other
-// windows on modern macOS. Outside a bundle (dev `task start`) it falls back to
-// a direct exec, which may open in the background.
-func (a *trayApp) openDashboard(frag string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	exe, err := osExecutable()
-	if err != nil {
-		log.Printf("open dashboard: executable path: %v", err)
-		return
-	}
-	// The URL holds the access token: it goes to the dashboard in a private
-	// file, and never on a command line or in the log.
-	file, err := handoff.Write(a.ui.URL() + frag)
-	if err != nil {
-		log.Printf("open dashboard: %v", err)
-		return
-	}
-
-	if dash := dashboardBundle(exe); dash != "" {
-		// `open` (without -n) launches the dashboard or, if already running,
-		// just brings it to the front.
-		cmd := exec.Command("open", dash, "--args", "ui", file)
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
-			os.RemoveAll(filepath.Dir(file))
-			log.Printf("open dashboard: %v", err)
-			return
-		}
-		log.Printf("opened dashboard (bundled)")
-		return
-	}
-
-	// Dev fallback (no .app bundle): direct exec.
-	if a.uiCmd != nil && a.uiCmd.ProcessState == nil {
-		os.RemoveAll(filepath.Dir(file))
-		log.Printf("dashboard already open")
-		return
-	}
-	cmd := exec.Command(exe, "ui", file)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	if err := cmd.Start(); err != nil {
-		os.RemoveAll(filepath.Dir(file))
-		log.Printf("open dashboard: start failed: %v", err)
-		return
-	}
-	a.uiCmd = cmd
-	go func() { _ = cmd.Wait(); a.clearUICmd() }()
-	log.Printf("opened dashboard (dev, may open in background — use `task bundle`)")
-}
-
-// dashboardBundle returns the path to the nested Dashboard.app when exe lives in
-// a Claimward.app bundle, else "".
-func dashboardBundle(exe string) string {
-	macos := filepath.Dir(exe)      // …/Contents/MacOS
-	contents := filepath.Dir(macos) // …/Contents
-	if filepath.Base(contents) != "Contents" {
-		return ""
-	}
-	dash := filepath.Join(contents, "Resources", "Dashboard.app")
-	if fi, err := os.Stat(dash); err == nil && fi.IsDir() {
-		return dash
-	}
-	return ""
-}
-
-func (a *trayApp) clearUICmd() {
-	a.mu.Lock()
-	a.uiCmd = nil
-	a.mu.Unlock()
-}
-
-func setEnabled(m *systray.MenuItem, enabled bool) {
-	if enabled {
-		m.Enable()
-	} else {
-		m.Disable()
-	}
+		}()
+	})
 }
