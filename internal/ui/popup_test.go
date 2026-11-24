@@ -5,6 +5,7 @@ package ui
 import (
 	"testing"
 
+	"github.com/claimward/claimward-vpn-client/pkg/appvm"
 	"github.com/claimward/claimward-vpn-client/pkg/hproto"
 )
 
@@ -44,5 +45,33 @@ func TestATenantIndexOutOfRangeShowsNoTitle(t *testing.T) {
 	vm.apply(st)
 	if got := vm.TenantName.Get(); got != "" {
 		t.Fatalf("title %q for a row past the list", got)
+	}
+}
+
+// The model's options change without their number changing: the rows follow.
+func TestARenamedTenantRowIsShown(t *testing.T) {
+	vm, _ := newVM(t, signedIn())
+	st := vm.m.State()
+	st.TenantOptions = []appvm.TenantOption{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}
+	vm.apply(st)
+	st.TenantOptions = []appvm.TenantOption{{ID: "a", Label: "A"}, {ID: "c", Label: "C"}}
+	vm.apply(st)
+	if rows := vm.TenantNames.Slice(); rows[1] != "C" {
+		t.Fatalf("rows %v", rows)
+	}
+}
+
+// Two rows can carry the same title; saying the title of the row already
+// chosen leaves the choice on that row.
+func TestATitleOfTheChosenRowKeepsTheRow(t *testing.T) {
+	vm, _ := newVM(t, signedIn())
+	st := vm.m.State()
+	st.TenantOptions = []appvm.TenantOption{{ID: "a", Label: "X"}, {ID: "b", Label: "X"}}
+	st.TenantIndex = 1
+	vm.apply(st)
+	vm.TenantName.Set("")
+	vm.TenantName.Set("X")
+	if got := vm.TenantIndex.Get(); got != 1 {
+		t.Fatalf("index %d, want the chosen row 1", got)
 	}
 }

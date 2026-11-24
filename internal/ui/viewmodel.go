@@ -201,9 +201,8 @@ func NewViewModel(core Core, opts ...Option) *ViewModel {
 		}
 	})
 	vm.TenantName.Subscribe(func(name string) {
-		if vm.syncing {
-			return
-		}
+		// While a State is copied the index is already the row this name
+		// belongs to, so the check below returns.
 		rows := vm.TenantNames.Slice()
 		if i := vm.TenantIndex.Get(); i >= 0 && i < len(rows) && rows[i] == name {
 			return
