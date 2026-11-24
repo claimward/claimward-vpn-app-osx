@@ -13,7 +13,7 @@
 # (SSH_ASKPASS_REQUIRE=force) — which, unlike expect, works without a TTY (e.g.
 # under CI / headless background runners).
 #
-# The GUI tray/webview is NOT exercised (no display in a headless VM); this
+# The GUI (window and status item) is NOT exercised (no display in a headless VM); this
 # validates the *deployment* path.
 set -euo pipefail
 

@@ -1,8 +1,10 @@
 # claimward-vpn-app-osx
 
 
-The Claimward VPN client for macOS: a **menu-bar (tray) app written in Go**, whose
-**entire user interface is a Svelte single-page app rendered in a webview**.
+The Claimward VPN client for macOS: a **native app written in Go** — one window and
+a menu-bar status item — drawn by [go-widgets](https://github.com/go-widgets), with
+the system's own text fields and pop-up buttons embedded in it. There is no webview,
+no local web server and no JavaScript.
 
 A signed DMG of each tagged version is attached to its
 [release](https://github.com/claimward/claimward-vpn-app-osx/releases) (`Claimward.dmg`, from
@@ -11,23 +13,30 @@ v0.1.0); it still needs the helper installed, see below.
 ## How it's put together
 
 ```
-┌────────────────────────── claimward-app (tray process) ──────────────────────────┐
-│  fyne.io/systray  ── menu: status, Open, Configuration, Connect, Disconnect, Quit│
-│  uiserver         ── loopback HTTP: serves embedded Svelte SPA + JSON API        │
-│  appcore          ── sign-in, tenant choice, helper client (claimward-vpn-client)│
-└───────────────┬──────────────────────────────────────────────┬───────────────────┘
-                │ spawns "claimward-app ui <url>"                │ Unix socket (JSON)
-                ▼                                                ▼
-   ┌─────────────────────────┐                    ┌──────────────────────────────┐
-   │ webview (WKWebView)      │  fetch /api/* ──►  │ claimward-helper (root daemon)│
-   │ renders the Svelte UI    │                    │ enrolls, wireguard-go utun    │
-   └─────────────────────────┘                    └──────────────────────────────┘
+┌──────────────────────────── claimward-app (one process) ─────────────────────────┐
+│  window           ── go-widgets, with NSTextField / NSPopUpButton embedded       │
+│  status item      ── go-widgets/tray: status, Open, Connect, Disconnect, Quit    │
+│  notifications    ── tray.Notify when the tunnel drops or the session expires    │
+│  ViewModel        ── internal/ui over appvm (claimward-vpn-client), bound with   │
+│                      mvvm; the same model drives the Linux and Windows apps      │
+└───────────────────────────────────────────────┬──────────────────────────────────┘
+                                                │ Unix socket (JSON)
+                                                ▼
+                                 ┌──────────────────────────────┐
+                                 │ claimward-helper (root daemon)│
+                                 │ enrolls, wireguard-go utun    │
+                                 └──────────────────────────────┘
 ```
 
-- **Tray process** owns all state. It serves the UI and a token-guarded JSON API
-  on `127.0.0.1`, and talks to the helper.
-- **Webview** is a thin chromeless window pointed at the loopback URL — the UI is
-  100% Svelte (`frontend/`), built with Vite and embedded via `go:embed`.
+- **The app** is one unprivileged process that owns all state and talks to the
+  helper. The text inputs (server URL, client IDs) are the system's
+  `NSTextField`, with its input method and spell checking; the identity-provider
+  and tenant choices are `NSPopUpButton`s. The painted widgets under them are the
+  fallback a host that cannot embed controls shows. Only changed rectangles are
+  re-presented, taken from the view model's changes.
+- **Notifications** (tunnel dropped, session expired) are posted once per
+  transition and need the app to run from the `Claimward.app` bundle; from a bare
+  binary they are logged instead.
 - **Privileged helper** is the only component that runs as root. The app sends
   it a *connect* request over a Unix socket (server URL, bearer, device key,
   tenant); the helper enrolls with that server — only if `helper.json` names it —
@@ -35,20 +44,18 @@ v0.1.0); it still needs the helper installed, see below.
   `wireguard-go` (`claimward-vpn-client/pkg/helper`, `pkg/wgtun`), and watches
   the route pushes.
 
-Why a separate helper + a separate webview process? On macOS only one Cocoa run
-loop can own the main thread, so the tray and the webview live in different
-processes; and tunnel setup needs root, which the unprivileged app must not have.
+Why a separate helper? Tunnel setup needs root, which the unprivileged app must
+not have.
 
 ## Layout
 
 | Path | What |
 |------|------|
-| `cmd/claimward-app` | tray process (+ `ui` subcommand = webview window) |
+| `cmd/claimward-app` | the app: window, status item, notifications |
 | `cmd/claimward-helper` | privileged root daemon (LaunchDaemon) |
-| `internal/uiserver` | embedded Svelte SPA + loopback JSON API |
-| `internal/brand` | the brand assets (tray icon) |
-| `frontend/` | Svelte + Vite UI (builds to `internal/uiserver/dist`) |
-| `deploy/`, `scripts/` | LaunchDaemon plist + install/uninstall |
+| `internal/ui` | the view model (over `appvm`), the bound widgets, the host |
+| `internal/brand` | the brand assets (status-item icon) |
+| `deploy/`, `scripts/` | LaunchDaemon plist, Info.plist + install/uninstall |
 
 The app's logic (sign-in, tenant choice, connect) and the helper's
 (`pkg/appcore`, `pkg/helper`, `pkg/hproto`, `pkg/helperclient`) are in
@@ -66,22 +73,17 @@ task install-helper SERVER=https://vpn.example.org  # build + install the root h
 task start:bundle    # build Claimward.app and launch it (recommended)
 ```
 
-`task --list` shows everything (`ui`, `build`, `bundle`, `run`, `dev:ui`, …).
+`task --list` shows everything (`build`, `bundle`, `run`, `dmg`, …).
 
-> **Run the bundle, not the bare binary.** Use **`task start:bundle`**. On
-> modern macOS a bare binary launched from a menu-bar agent can't bring its
-> window to the foreground, so the dashboard opens *behind* other windows. The
-> `.app` bundle (a menu-bar agent embedding a regular **Dashboard.app**) fixes
-> this — "Open Claimward" then activates the window properly. `task start` (bare
+> **Run the bundle, not the bare binary.** Use **`task start:bundle`**.
+> Notifications (UNUserNotificationCenter) refuse a process that is not in an
+> app bundle, so the tunnel dropping would only reach the log. `task run` (bare
 > binary) is for quick dev only.
 
 ## Build (manual)
 
 ```sh
-# 1. Build the Svelte UI (embedded into the Go binary)
-cd frontend && npm install && npm run build && cd ..
-
-# 2. Build the app (cgo: WebKit + Cocoa) and the helper (pure Go)
+# Build the app (cgo: Cocoa) and the helper (pure Go); no Node toolchain
 CGO_ENABLED=1 go build -o bin/claimward-app    ./cmd/claimward-app
 CGO_ENABLED=0 go build -o bin/claimward-helper  ./cmd/claimward-helper
 ```
@@ -91,7 +93,7 @@ CGO_ENABLED=0 go build -o bin/claimward-helper  ./cmd/claimward-helper
 Create `~/Library/Application Support/Claimward/config.json` (or use the
 `CLAIMWARD_SERVER`, `CLAIMWARD_AUTH_PROVIDER`, `CLAIMWARD_GITHUB_CLIENT_ID`,
 `CLAIMWARD_OIDC_ISSUER`, `CLAIMWARD_OIDC_CLIENT_ID`, `CLAIMWARD_HELPER_SOCKET`).
-The menu's "Configuration…" edits the same file. `server_url` must be one of
+The window's "Settings" page edits the same file. `server_url` must be one of
 the servers the helper was installed with. **GitHub is the default provider** (OAuth device flow):
 
 ```json
@@ -154,12 +156,10 @@ menu bar that the server refuses for want of a choice opens the window.
   packet of the machine. It takes no tunnel configuration from a request.
 - **Its socket, `/var/run/claimward-helper.sock`, is `0660`, `root:admin`.**
   Before v0.1.0 it was `0666`, so any local process could drive it.
-- The loopback UI API is guarded by a per-launch token, compared in constant
-  time and accepted in the `X-Claimward-Token` header only, never in a query
-  string. The tray hands the dashboard its URL (which holds the token) through a
-  `0600` file in a `0700` directory that the dashboard reads and deletes, so the
-  token is on no command line and in no log. `POST /api/config` cannot change
-  the helper socket (claimward-vpn-client v0.4.0).
+- There is no local HTTP server and no handoff token any more (before v0.7.0 the
+  UI was a webview talking to a loopback API guarded by a per-launch token): the
+  window and the logic share one process. The settings form cannot change the
+  helper socket (claimward-vpn-client v0.4.0).
 - A route watch carries the bearer token, and runs over TLS (claimward-vpn-client).
 - The tunnel's MTU is clamped to the path MTU to the server minus 60 (IPv4) or
   80 (IPv6) (claimward-vpn-client v0.6.0, `pkg/pathmtu`), so large packets are
@@ -172,6 +172,14 @@ menu bar that the server refuses for want of a choice opens the window.
   push (`pkg/wgtun` carries it but does not set it on macOS).
 
 ## Release & CI
+
+`.github/workflows/ci.yml` runs gofmt, vet, build, the tests (`internal/ui` held
+at 100% coverage) and the race detector on Apple silicon and Intel; the
+go-widgets MVVM gate (`mvvmlint`) and the hand-drawn-UI gate (`bricolint`, with
+its negative control); and a launch lane that builds `Claimward.app`, starts it
+and reads the accessibility tree for the status item, the native text fields and
+the native pop-up button. The Node/Vite toolchain is gone from CI and from the
+release build.
 
 `.github/workflows/release.yml` runs on `v*` tags:
 
