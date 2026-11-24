@@ -177,8 +177,8 @@ menu bar that the server refuses for want of a choice opens the window.
 at 100% coverage) and the race detector on Apple silicon and Intel; the
 go-widgets MVVM gate (`mvvmlint`) and the hand-drawn-UI gate (`bricolint`, with
 its negative control); and a launch lane that builds `Claimward.app`, starts it
-and reads the accessibility tree for the status item, the native text fields and
-the native pop-up button. The Node/Vite toolchain is gone from CI and from the
+and reads the accessibility tree for the status item and the window (the native
+fields on the Settings page are asserted by the `internal/ui` tests). The Node/Vite toolchain is gone from CI and from the
 release build.
 
 `.github/workflows/release.yml` runs on `v*` tags:
