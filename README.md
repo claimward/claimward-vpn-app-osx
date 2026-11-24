@@ -161,6 +161,9 @@ menu bar that the server refuses for want of a choice opens the window.
   token is on no command line and in no log. `POST /api/config` cannot change
   the helper socket (claimward-vpn-client v0.4.0).
 - A route watch carries the bearer token, and runs over TLS (claimward-vpn-client).
+- The tunnel's MTU is clamped to the path MTU to the server minus 60 (IPv4) or
+  80 (IPv6) (claimward-vpn-client v0.6.0, `pkg/pathmtu`), so large packets are
+  not lost on links with a smaller MTU.
 - Session tokens and the device key live in the login Keychain, sealed through
   `pkg/tokenstore` (claimward-vpn-client v0.5.0); a `0600` file from an older
   version is moved into it on first start. There is no plaintext fallback: if
