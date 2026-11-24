@@ -11,7 +11,8 @@ tell application "System Events"
 		set out to out & "windows: " & (count of windows) & linefeed
 		set out to out & "title: " & (name of window 1) & linefeed
 		set found to false
-		repeat with e in (entire contents of window 1)
+		set els to entire contents of window 1
+		repeat with e in els
 			set r to ""
 			set labels to {}
 			try
