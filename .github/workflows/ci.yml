@@ -95,7 +95,7 @@ jobs:
       - name: Launch and read the accessibility tree
         run: |
           open dist/Claimward.app
-          sleep 8
+          sleep 20
           osascript hack/axcheck.applescript | tee ax.txt
           grep -q '^status items: 1' ax.txt
           grep -q '^AXTextField' ax.txt

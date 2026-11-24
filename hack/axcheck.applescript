@@ -6,6 +6,7 @@
 tell application "System Events"
 	tell process "claimward-app"
 		set out to "status items: " & (count of menu bar items of menu bar 2) & linefeed
+		set out to out & "windows: " & (count of windows) & linefeed
 		repeat with e in (entire contents of window 1)
 			try
 				set out to out & (role of e) & linefeed
