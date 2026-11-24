@@ -12,9 +12,22 @@ tell application "System Events"
 		set out to out & "title: " & (name of window 1) & linefeed
 		set found to false
 		repeat with e in (entire contents of window 1)
+			set r to ""
+			set labels to {}
 			try
-				if (role of e) is "AXButton" and (description of e) is "Settings" then set found to true
+				set r to (role of e)
 			end try
+			try
+				set end of labels to (description of e)
+			end try
+			try
+				set end of labels to (title of e)
+			end try
+			try
+				set end of labels to (name of e)
+			end try
+			if r is "AXButton" and labels contains "Settings" then set found to true
+			set out to out & "element: " & r & " | " & (labels as text) & linefeed
 		end repeat
 		set out to out & "settings button: " & found & linefeed
 	end tell
