@@ -325,7 +325,16 @@ func (v *View) NativeControls() []toolkit.NativeControl {
 	return cs
 }
 
+// A11yElements describes the painted widgets to the platform's accessibility
+// layer: without it the window is one unlabelled rectangle and the painted
+// buttons (Settings, Sign in, ...) are not in the macOS AX tree at all. The
+// native text fields and pop-up are reached by the back-end as real controls.
+func (v *View) A11yElements() []application.A11yElement {
+	return application.A11yElementsOf(v.root)
+}
+
 var (
+	_ application.Accessible            = (*View)(nil)
 	_ application.NativeControlProvider = (*View)(nil)
 	_ application.Handler               = (*View)(nil)
 	_ application.ShortcutSink          = (*View)(nil)
