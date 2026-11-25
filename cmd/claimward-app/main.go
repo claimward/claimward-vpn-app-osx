@@ -85,7 +85,10 @@ func run() error {
 	defer t.Quit()
 
 	spec := application.Spec{Name: "Claimward", Identifier: "com.claimward.app", Version: version}
-	return application.Run(spec, application.Config{Title: windowTitle, Width: 460, Height: 720, HideOnClose: true}, view, func() {
+	// Menu gives the menu bar the standard Edit menu: without it Cut, Copy and
+	// Paste have no menu route in the embedded text fields.
+	cfgApp := application.Config{Title: windowTitle, Width: 460, Height: 720, HideOnClose: true, Menu: tray.NewMenu().Add(tray.EditMenu())}
+	return application.Run(spec, cfgApp, view, func() {
 		// The status item joins once the window's loop runs. It is not a
 		// Spec.Tray because that builds its menu once, and the binding above
 		// changes the menu as the status changes.
