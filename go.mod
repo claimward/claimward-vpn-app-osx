@@ -5,11 +5,11 @@ go 1.27.4
 require (
 	github.com/claimward/claimward-vpn-client v0.7.0
 	github.com/go-macos/objc v0.13.0
-	github.com/go-widgets/application v0.10.0
+	github.com/go-widgets/application v0.11.0
 	github.com/go-widgets/mvvm v0.15.0
 	github.com/go-widgets/mvvmtk v0.16.0
-	github.com/go-widgets/painter v0.18.0
-	github.com/go-widgets/toolkit v0.396.1
+	github.com/go-widgets/painter v0.19.0
+	github.com/go-widgets/toolkit v0.398.0
 	github.com/go-widgets/tray v0.16.1
 )
 
@@ -39,7 +39,7 @@ require (
 	github.com/go-widgets/textinput v0.1.1 // indirect
 	github.com/go-widgets/vcs v0.1.0 // indirect
 	github.com/go-widgets/webcanvas v0.14.1 // indirect
-	github.com/go-widgets/window v0.98.1 // indirect
+	github.com/go-widgets/window v0.98.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.4 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.62.0 // indirect

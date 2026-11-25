@@ -63,6 +63,12 @@ The app's logic (sign-in, tenant choice, connect) and the helper's
 with the Linux and Windows apps. This repository is the macOS shell around
 them.
 
+## The window and the status item
+
+Closing the window hides it: the app keeps running in the menu-bar status item
+and quits only through its **Quit** item. **Open Claimward** brings the window
+back (one window, never a second).
+
 ## Quick start (Task)
 
 With [go-task](https://taskfile.dev) (`pkgx install task`):

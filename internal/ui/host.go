@@ -196,11 +196,9 @@ func (v *View) mark(w toolkit.Widget) {
 	}
 	v.damage = append(v.damage, r)
 	if len(v.damage) > maxDamage {
-		u := v.damage[0]
-		for _, d := range v.damage[1:] {
-			x0, y0 := min(u.X, d.X), min(u.Y, d.Y)
-			x1, y1 := max(u.X+u.W, d.X+d.W), max(u.Y+u.H, d.Y+d.H)
-			u = toolkit.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+		var u toolkit.Rect
+		for _, d := range v.damage {
+			u = u.Union(d)
 		}
 		v.damage = []toolkit.Rect{u}
 	}
