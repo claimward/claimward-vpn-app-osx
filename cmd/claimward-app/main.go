@@ -64,10 +64,16 @@ func run() error {
 	defer vm.Stop()
 
 	t := tray.New(brand.TrayTemplate).SetTooltip("Claimward")
-	// application.Run keeps the window's backend to itself, so the window cannot
-	// be raised again once hidden; it is never hidden (closing it quits), and
-	// "Open" brings the app to the front.
-	openWindow := func() { activate() }
+	// Closing the window hides it (Config.HideOnClose): the app keeps running in
+	// the status item and quits only through its Quit item. "Open" raises the
+	// window again; Raise shows it if hidden, and activate brings the app, with
+	// its window, in front of the other applications.
+	openWindow := func() {
+		if err := application.Raise(); err != nil {
+			log.Printf("claimward-app: raise the window: %v", err)
+		}
+		activate()
+	}
 	unbind := ui.BindTray(t, vm, queue.Post, ui.TrayActions{
 		Open: openWindow,
 		Quit: func() { os.Exit(0) },
@@ -79,7 +85,7 @@ func run() error {
 	defer t.Quit()
 
 	spec := application.Spec{Name: "Claimward", Identifier: "com.claimward.app", Version: version}
-	return application.Run(spec, application.Config{Title: windowTitle, Width: 460, Height: 720}, view, func() {
+	return application.Run(spec, application.Config{Title: windowTitle, Width: 460, Height: 720, HideOnClose: true}, view, func() {
 		// The status item joins once the window's loop runs. It is not a
 		// Spec.Tray because that builds its menu once, and the binding above
 		// changes the menu as the status changes.
