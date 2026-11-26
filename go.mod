@@ -9,6 +9,7 @@ require (
 	github.com/go-widgets/mvvm v0.15.0
 	github.com/go-widgets/mvvmtk v0.16.0
 	github.com/go-widgets/painter v0.20.3
+	github.com/go-widgets/tabler-icons v0.1.0
 	github.com/go-widgets/toolkit v0.401.1
 	github.com/go-widgets/tray v0.17.1
 )
@@ -37,7 +38,6 @@ require (
 	github.com/go-typeset/bidi v0.3.1 // indirect
 	github.com/go-widgets/android v0.16.0 // indirect
 	github.com/go-widgets/gpupainter v0.4.0 // indirect
-	github.com/go-widgets/tabler-icons v0.0.0
 	github.com/go-widgets/textinput v0.1.1 // indirect
 	github.com/go-widgets/vcs v0.1.0 // indirect
 	github.com/go-widgets/webcanvas v0.14.1 // indirect
@@ -56,5 +56,3 @@ require (
 	google.golang.org/grpc v1.85.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
-
-replace github.com/go-widgets/tabler-icons => ../go-widgets-tabler-icons

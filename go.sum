@@ -67,6 +67,8 @@ github.com/go-widgets/mvvmtk v0.16.0 h1:RGQgDsaVWw35mMcAfZzlddd/b7KlSLu9v29rt74t
 github.com/go-widgets/mvvmtk v0.16.0/go.mod h1:3ikT4ttG3/yFh737beA/q3wxL+BdkpS6kxjvVEfEGU8=
 github.com/go-widgets/painter v0.20.3 h1:cmBB1jTLuM2wbfupQ2ZXQgwUgTnqSid6CPBNA38hLow=
 github.com/go-widgets/painter v0.20.3/go.mod h1:uwNd4vsDklrWHtRaq+/Y65/qlw6FWfhXtlWvke1fulw=
+github.com/go-widgets/tabler-icons v0.1.0 h1:yj8xgig7znGiYrxB/L/3NOgT9E33KzOwLgh5dzwDzLU=
+github.com/go-widgets/tabler-icons v0.1.0/go.mod h1:kqxbNtKsFi2KoY29MO6MgnTT4obem3BsVP2tEUqOS9I=
 github.com/go-widgets/textinput v0.1.1 h1:3NZD5CJm5XYSWA3YzQ64tXC86gnEQ0UlNPL5qJeIUSs=
 github.com/go-widgets/textinput v0.1.1/go.mod h1:Y/k3PDtUEMQ/4psCVKdmUStNWa/EsVAMcCKG2lEtQ5c=
 github.com/go-widgets/toolkit v0.401.1 h1:+oMrL8a44xmUZ17PeKuOX0WJPlTzEX3mEME0GUNYpk4=
