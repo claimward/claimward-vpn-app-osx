@@ -67,7 +67,21 @@ them.
 
 Closing the window hides it: the app keeps running in the menu-bar status item
 and quits only through its **Quit** item. **Open Claimward** brings the window
-back (one window, never a second).
+back (one main window, never a second).
+
+The window (760 x 600, the brand's deep teal) is laid out as:
+
+- **Header**: the white Claimward mark, the title and **Settings**.
+- **Servers sidebar** (left): the configured servers, one row each (named by
+  host), with **+** and **−** under the list. **+** opens the server settings;
+  **−** stays disabled until the configuration holds more than one server.
+- **Detail panel** (right): the selected server's name, its **Tenant** pop-up
+  with a **Refresh** button, the session state, the sign-in card, Sign in /
+  Sign out, Connect / Disconnect and the connection log.
+- **Settings window**: the settings form (server URL, identity provider and
+  its fields, Save / Cancel) opens in a second window, so the status stays
+  visible. Save, Cancel or closing that window ends the edit; where a second
+  window cannot be opened, the form shows in the main window instead.
 
 ## Quick start (Task)
 
@@ -99,7 +113,7 @@ CGO_ENABLED=0 go build -o bin/claimward-helper  ./cmd/claimward-helper
 Create `~/Library/Application Support/Claimward/config.json` (or use the
 `CLAIMWARD_SERVER`, `CLAIMWARD_AUTH_PROVIDER`, `CLAIMWARD_GITHUB_CLIENT_ID`,
 `CLAIMWARD_OIDC_ISSUER`, `CLAIMWARD_OIDC_CLIENT_ID`, `CLAIMWARD_HELPER_SOCKET`).
-The window's "Settings" page edits the same file. `server_url` must be one of
+The Settings window edits the same file. `server_url` must be one of
 the servers the helper was installed with. **GitHub is the default provider** (OAuth device flow):
 
 ```json
@@ -148,8 +162,8 @@ sudo ./scripts/install-helper.sh https://vpn.example.org   # root LaunchDaemon +
 ## Tenants
 
 A person may belong to several tenants (claimward-vpn-server matches them on
-email domain, groups and institution). The window offers the tenants once the
-server says there is a choice, or on request ("Choose a tenant…"), and the
+email domain, groups and institution). The detail panel's Tenant pop-up lists
+the tenants once the server has offered them; **Refresh** asks again. The
 choice holds for the session; a new sign-in forgets it. A Connect from the
 menu bar that the server refuses for want of a choice opens the window.
 

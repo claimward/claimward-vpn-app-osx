@@ -66,6 +66,9 @@ type View struct {
 	w     *widgets
 	cards *cards
 	root  toolkit.Widget
+	// build composes the widgets: layout for the main window, settingsLayout
+	// for the settings window.
+	build func(*widgets, *cards) toolkit.Widget
 
 	theme       *toolkit.Theme
 	buf         []byte
@@ -90,7 +93,19 @@ type View struct {
 // NewView binds a View to vm. Its Frame drains queue: give the ViewModel
 // WithPost(queue.Post).
 func NewView(vm *ViewModel, queue *Queue) *View {
-	v := &View{vm: vm, queue: queue, theme: toolkit.DefaultLight()}
+	v := newView(vm, queue, layout)
+	return v
+}
+
+// NewSettingsView is the settings form alone, for a window of its own (see
+// WithSettingsWindow). Its Frame drains queue too: both windows run on the UI
+// thread, so whichever draws first runs what was posted.
+func NewSettingsView(vm *ViewModel, queue *Queue) *View {
+	return newView(vm, queue, settingsLayout)
+}
+
+func newView(vm *ViewModel, queue *Queue, build func(*widgets, *cards) toolkit.Widget) *View {
+	v := &View{vm: vm, queue: queue, theme: brandTheme(), build: build}
 	relayout := func() { v.relayout.Store(true); v.wholeFrame() }
 	v.w, v.cards, v.unbind = bindView(vm, v.mark, relayout)
 	v.dirty.Store(true)
@@ -121,7 +136,7 @@ func (v *View) Resize(w, h int, _ float64) {
 // its bounds.
 func (v *View) arrange() {
 	if s := toolkit.MetricScale(); v.root == nil || s != v.builtAt {
-		v.root, v.builtAt = layout(v.w, v.cards), s
+		v.root, v.builtAt = v.build(v.w, v.cards), s
 	}
 	m := toolkit.Scaled(margin)
 	v.root.SetBounds(toolkit.Rect{X: m, Y: m, W: v.width - 2*m, H: v.high - 2*m})
@@ -297,15 +312,9 @@ func (v *View) Shortcut(r rune, ctrl, meta bool) {
 	v.event(toolkit.Event{Kind: toolkit.EventKeyDown, Code: "Ctrl+" + strings.ToUpper(string(r)), Ctrl: ctrl, Meta: meta})
 }
 
-// SystemAppearance follows the system's light or dark mode.
-func (v *View) SystemAppearance(a application.SystemAppearance) {
-	if a.Dark {
-		v.theme = toolkit.DefaultDark()
-	} else {
-		v.theme = toolkit.DefaultLight()
-	}
-	v.wholeFrame()
-}
+// SystemAppearance is told the system's light or dark mode. The page is the
+// brand's deep teal with white ink in both, so nothing changes.
+func (v *View) SystemAppearance(a application.SystemAppearance) { _ = a }
 
 // NativeControls describes the native controls the host embeds: one edit
 // control per text input on the page being shown. It runs on the UI thread, as

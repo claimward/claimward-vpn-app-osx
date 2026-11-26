@@ -12,3 +12,10 @@ import _ "embed"
 //
 //go:embed claimward-trayTemplate.png
 var TrayTemplate []byte
+
+// MarkWhite is the mark in white on transparent (PNG, 128×128), rendered from
+// claimward/brand macos/claimward-tray-white.svg with rsvg-convert. It is the
+// window's logo, on the deep-teal page.
+//
+//go:embed claimward-mark-white-128.png
+var MarkWhite []byte

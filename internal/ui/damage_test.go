@@ -91,9 +91,10 @@ func TestIncrementalPresentEqualsAFullRepaint(t *testing.T) {
 		for step := 0; step < 60; step++ {
 			switch r.Intn(10) {
 			case 0: // a resize, sometimes to the same number of pixels
-				w, h := 400+r.Intn(300), 600+r.Intn(300)
+				// Wide enough for the detail panel's text to stay in its box.
+				w, h := 700+r.Intn(300), 500+r.Intn(300)
 				if r.Intn(3) == 0 {
-					w, h = h, w
+					w, h = h+200, w-200
 				}
 				v.Resize(w, h, 1)
 			case 1, 2: // the pointer
