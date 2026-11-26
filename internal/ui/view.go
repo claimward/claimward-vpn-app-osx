@@ -154,6 +154,7 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 	w.servers.RowHeight = toolkit.Scaled(28)
 	w.serverPane = toolkit.NewListPane(w.servers, toolkit.ListBarMac)
 	w.serverPane.AccessibleName = "Servers"
+	w.serverPane.Extra = []*toolkit.Button{gearButton()}
 	w.nTenant = nativePopUp("tenant", nil, w.tenantPick)
 	w.settings = toolkit.NewButton("Settings", nil)
 	w.server.Placeholder = "https://vpn.example.org"
@@ -195,6 +196,8 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 		mvvmtk.BindCommand(w.chooseTenant, vm.ChooseTenant, of(w.chooseTenant)),
 		mvvmtk.BindCommand(w.serverPane.Add, vm.AddServer, of(w.serverPane)),
 		mvvmtk.BindCommand(w.serverPane.Remove, vm.RemoveServer, of(w.serverPane)),
+		mvvmtk.BindCommand(w.serverPane.Extra[0], vm.EditServer, of(w.serverPane)),
+		mvvm.BindTwoWay(vm.EditServerLabel, w.serverPane.Extra[0].Label(), of(w.serverPane)),
 		mvvmtk.BindCommand(w.save, vm.SaveSettings, of(w.save)),
 		mvvmtk.BindCommand(w.cancel, vm.CloseSettings, of(w.cancel)),
 

@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/claimward/claimward-vpn-client/pkg/appcore"
+	"github.com/go-widgets/painter"
+	"github.com/go-widgets/toolkit"
 )
 
 // fakeWindow stands in for the second window: it counts opens and closes.
@@ -153,6 +155,73 @@ func TestRemovingAServerIsNotOfferedYet(t *testing.T) {
 	vm.RemoveServer.Execute()
 	if len(vm.Servers.Slice()) != 1 {
 		t.Error("− removed the only server")
+	}
+}
+
+func TestTheGearEditsTheSelectedServerInTheSettingsWindow(t *testing.T) {
+	var fw fakeWindow
+	vm, q := newVM(t, signedOut(), WithSettingsWindow(fw.open))
+	if !vm.EditServer.CanExecute() || vm.EditServerLabel.Get() != "Edit server" {
+		t.Fatalf("gear enabled %v label %q", vm.EditServer.CanExecute(), vm.EditServerLabel.Get())
+	}
+	run(vm, q, vm.EditServer.Execute)
+	if fw.opened != 1 || !vm.SettingsInWindow.Get() || vm.Page.Get() != PageSettings {
+		t.Fatalf("opened %d inWindow %v page %d", fw.opened, vm.SettingsInWindow.Get(), vm.Page.Get())
+	}
+	// With the form open the gear cannot open a second one.
+	if vm.EditServer.CanExecute() {
+		t.Error("the gear is enabled while the form is open")
+	}
+}
+
+func TestTheGearIsOffWithNoServerSelectedAndSaysWhy(t *testing.T) {
+	f := signedOut()
+	f.st = appcore.Status{}
+	f.cfg = appcore.Config{}
+	vm, _ := newVM(t, f)
+	if vm.EditServer.CanExecute() || vm.EditServerLabel.Get() != "Edit server (select a server first)" {
+		t.Errorf("gear enabled %v label %q", vm.EditServer.CanExecute(), vm.EditServerLabel.Get())
+	}
+	vm.EditServer.Execute()
+	if vm.Page.Get() == PageSettings {
+		t.Error("the gear opened a form with nothing selected")
+	}
+	vm.ServerIndex.Set(-1)
+	vm.ServerIndex.Set(5)
+}
+
+// imageRecorder is a painter that can blit an image, and notes the blit.
+type imageRecorder struct {
+	painter.Painter
+	blits, ink int
+}
+
+func (r *imageRecorder) DrawImage(_ painter.Rect, src []byte, w, h int) {
+	r.blits++
+	for i := 3; i < len(src); i += 4 {
+		if src[i] != 0 {
+			r.ink++
+		}
+	}
+}
+
+func TestTheGearButtonIsNamedAndDrawsTheTablerCog(t *testing.T) {
+	v, _ := newTestView(t, signedOut())
+	g := v.w.serverPane.Extra[0]
+	if len(v.w.serverPane.Extra) != 1 || g.Label().Get() != "Edit server" {
+		t.Fatalf("extra %d label %q", len(v.w.serverPane.Extra), g.Label().Get())
+	}
+	names := map[string]bool{}
+	for _, e := range v.A11yElements() {
+		names[e.Name] = true
+	}
+	if !names["Edit server"] {
+		t.Errorf("no accessible Edit server button among %v", names)
+	}
+	rec := &imageRecorder{}
+	g.Icon(rec, toolkit.Rect{X: 0, Y: 0, W: 26, H: 24}, toolkit.RGBA{A: 255})
+	if rec.blits != 1 || rec.ink == 0 {
+		t.Errorf("blits %d inked pixels %d", rec.blits, rec.ink)
 	}
 }
 
