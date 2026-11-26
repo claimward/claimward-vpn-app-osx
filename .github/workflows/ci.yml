@@ -66,7 +66,7 @@ jobs:
 
   bricolint:
     name: Hand-drawn-UI gate
-    runs-on: macos-15
+    runs-on: macos-26
     env:
       CGO_ENABLED: '1'
     steps:
@@ -82,7 +82,7 @@ jobs:
 
   launch:
     name: launch the bundle (status item, native controls)
-    runs-on: macos-15
+    runs-on: macos-26
     env:
       CGO_ENABLED: '1'
     steps:
