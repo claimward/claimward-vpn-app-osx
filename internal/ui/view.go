@@ -25,15 +25,24 @@ import (
 
 // Layout, in logical pixels (toolkit.Scaled turns them into device ones).
 const (
-	margin = 14
-	gap    = 8
-	rowH   = 26
-	btnH   = 30
-	titleH = 30
+	margin   = 14
+	gap      = 8
+	rowH     = 26
+	btnH     = 30
+	titleH   = 36
+	sidebarW = 200
+	// tenantLabelW and refreshW are the fixed ends of the tenant row.
+	tenantLabelW = 60
+	refreshW     = 90
+	// The cards' heights, in logical pixels: the sign-in prompt is three rows
+	// and a button row, the provider card four rows, with 4 between them.
+	signInCardH   = 3*rowH + btnH + 3*4
+	providerCardH = 4*rowH + 3*4
 )
 
 // widgets are the View's controls, built once and bound once.
 type widgets struct {
+	logo     *toolkit.Image
 	title    *toolkit.Label
 	settings *toolkit.Button
 
@@ -43,10 +52,19 @@ type widgets struct {
 	deviceHint, deviceCode, deviceURI *toolkit.Label
 	openPage, cancelSignIn            *toolkit.Button
 
+	// The sidebar: the configured servers, one row each, and the flat + and −
+	// buttons under them; the detail panel shows the selected one.
+	serversTitle *toolkit.Label
+	servers      *toolkit.ListBox
+	// serverPane frames the list over its bar of joined + and − buttons.
+	serverPane *toolkit.ListPane
+	// serverName heads the detail panel.
+	serverName *toolkit.Label
+	// tenantLabel names the tenant choice: tenantPick, under the native pop-up
+	// button nTenant.
 	tenantLabel *toolkit.Label
 	tenantPick  *toolkit.DropDown
-	// nTenant is the native pop-up button over tenantPick.
-	nTenant *toolkit.Native
+	nTenant     *toolkit.Native
 
 	signIn, signOut, connect, disconnect, chooseTenant *toolkit.Button
 
@@ -63,7 +81,7 @@ type widgets struct {
 	nProvider    *toolkit.Native
 	save, cancel *toolkit.Button
 
-	blankSignIn, blankTenant *toolkit.Label
+	blankSignIn *toolkit.Label
 }
 
 // cards are the CardLayouts that show one of several things: the page, and
@@ -75,7 +93,7 @@ type widgets struct {
 // observable and mvvm has no converting binding. Both keep the inactive pages
 // out of the focus walk.
 type cards struct {
-	page, signIn, tenant, provider *toolkit.CardLayout
+	page, signIn, provider *toolkit.CardLayout
 }
 
 // bindView builds the widgets and binds them. mark(w) is told that w's
@@ -84,6 +102,7 @@ type cards struct {
 // the whole window.
 func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widgets, *cards, []func()) {
 	w := &widgets{
+		logo:    logo(),
 		title:   toolkit.NewLabel("Claimward VPN"),
 		state:   toolkit.NewLabel(""),
 		detail:  toolkit.NewLabel(""),
@@ -99,14 +118,17 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 		openPage:     toolkit.NewButton("Open sign-in page", nil),
 		cancelSignIn: toolkit.NewButton("Cancel sign-in", nil),
 
-		tenantLabel: toolkit.NewLabel("Tenant for this session:"),
-		tenantPick:  toolkit.NewDropDown(nil, 0),
+		serversTitle: toolkit.NewLabel("Servers"),
+		servers:      toolkit.NewListBox(nil),
+		serverName:   toolkit.NewLabel(""),
+		tenantLabel:  toolkit.NewLabel("Tenant"),
+		tenantPick:   toolkit.NewDropDown(nil, 0),
 
 		signIn:       toolkit.NewButton("Sign in", nil),
 		signOut:      toolkit.NewButton("Sign out", nil),
 		connect:      toolkit.NewButton("Connect", nil),
 		disconnect:   toolkit.NewButton("Disconnect", nil),
-		chooseTenant: toolkit.NewButton("Choose tenant", nil),
+		chooseTenant: toolkit.NewButton("Refresh", nil),
 
 		logTitle: toolkit.NewLabel("Connection log"),
 		log:      toolkit.NewListBox(nil),
@@ -126,8 +148,13 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 		cancel:        toolkit.NewButton("Cancel", nil),
 
 		blankSignIn: toolkit.NewLabel(""),
-		blankTenant: toolkit.NewLabel(""),
 	}
+	w.title.SetFontSize(20)
+	w.serverName.SetFontSize(18)
+	w.servers.RowHeight = toolkit.Scaled(28)
+	w.serverPane = toolkit.NewListPane(w.servers, toolkit.ListBarMac)
+	w.serverPane.AccessibleName = "Servers"
+	w.nTenant = nativePopUp("tenant", nil, w.tenantPick)
 	w.settings = toolkit.NewButton("Settings", nil)
 	w.server.Placeholder = "https://vpn.example.org"
 	w.githubID.Placeholder = "Iv1.0123456789abcdef"
@@ -137,11 +164,10 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 	w.nIssuer = nativeEntry("oidc_issuer", w.issuer)
 	w.nClient = nativeEntry("oidc_client_id", w.clientID)
 	w.nProvider = nativePopUp("provider", providerLabels(), w.provider)
-	w.nTenant = nativePopUp("tenant", nil, w.tenantPick)
 
 	c := &cards{
 		page: &toolkit.CardLayout{}, signIn: &toolkit.CardLayout{},
-		tenant: &toolkit.CardLayout{}, provider: &toolkit.CardLayout{},
+		provider: &toolkit.CardLayout{},
 	}
 	of := func(x toolkit.Widget) func() { return func() { mark(x) } }
 	onCard := func() { relayout() }
@@ -157,6 +183,7 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 		mvvmtk.BindLabel(w.deviceCode, vm.DeviceCode, of(w.deviceCode)),
 		mvvmtk.BindLabel(w.deviceURI, vm.DeviceURI, of(w.deviceURI)),
 		mvvmtk.BindLabel(w.pathLabel, vm.ConfigPath, of(w.pathLabel)),
+		mvvmtk.BindLabel(w.serverName, vm.ServerName, of(w.serverName)),
 
 		mvvmtk.BindCommand(w.settings, vm.OpenSettings, of(w.settings)),
 		mvvmtk.BindCommand(w.openPage, vm.OpenSignInPage, of(w.openPage)),
@@ -166,11 +193,17 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 		mvvmtk.BindCommand(w.connect, vm.Connect, of(w.connect)),
 		mvvmtk.BindCommand(w.disconnect, vm.Disconnect, of(w.disconnect)),
 		mvvmtk.BindCommand(w.chooseTenant, vm.ChooseTenant, of(w.chooseTenant)),
+		mvvmtk.BindCommand(w.serverPane.Add, vm.AddServer, of(w.serverPane)),
+		mvvmtk.BindCommand(w.serverPane.Remove, vm.RemoveServer, of(w.serverPane)),
 		mvvmtk.BindCommand(w.save, vm.SaveSettings, of(w.save)),
 		mvvmtk.BindCommand(w.cancel, vm.CloseSettings, of(w.cancel)),
 
+		mvvmtk.BindListItems(w.servers, vm.Servers, row, of(w.servers)),
+		mvvmtk.BindListSelection(w.servers, vm.ServerIndex, of(w.servers)),
 		mvvmtk.BindDropDownOptions(w.tenantPick, vm.TenantNames, row, of(w.nTenant)),
 		mvvmtk.BindSelectedIndex(w.tenantPick, vm.TenantIndex, of(w.nTenant)),
+		mvvm.BindTwoWay(vm.TenantName, w.nTenant.Text(), of(w.nTenant)),
+		mvvm.BindList(vm.TenantNames, &w.nTenant.Items, row, of(w.nTenant)),
 		mvvmtk.BindSelectedIndex(w.provider, vm.ProviderIndex, of(w.nProvider)),
 		mvvmtk.BindListItems(w.log, vm.Log, row, of(w.log)),
 
@@ -184,12 +217,8 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 		mvvm.BindTwoWay(vm.OIDCIssuer, w.nIssuer.Text(), of(w.nIssuer)),
 		mvvm.BindTwoWay(vm.OIDCClientID, w.nClient.Text(), of(w.nClient)),
 		mvvm.BindTwoWay(vm.ProviderName, w.nProvider.Text(), of(w.nProvider)),
-		mvvm.BindTwoWay(vm.TenantName, w.nTenant.Text(), of(w.nTenant)),
-		mvvm.BindList(vm.TenantNames, &w.nTenant.Items, row, of(w.nTenant)),
 
-		mvvm.OneWay(vm.Page, &c.page.Active, onCard),
 		mvvm.OneWay(vm.SignInPanel, &c.signIn.Active, onCard),
-		mvvm.OneWay(vm.TenantPanel, &c.tenant.Active, onCard),
 		mvvm.OneWay(vm.ProviderPanel, &c.provider.Active, onCard),
 	}
 	return w, c, unbind
@@ -250,25 +279,62 @@ func layout(w *widgets, c *cards) toolkit.Widget {
 	device.AddFixed(w.deviceURI, px(rowH))
 	device.AddFixed(row(w.openPage, w.cancelSignIn), px(btnH))
 
+	// The sidebar: the servers, framed over the bar of their + and − buttons.
+	sidebar := toolkit.NewVBox()
+	sidebar.Spacing = px(4)
+	sidebar.AddFixed(w.serversTitle, px(rowH))
+	sidebar.AddFlex(w.serverPane, 1)
+
+	// The tenant choice on the selected server, and the button that asks the
+	// server for its tenants again.
 	tenantRow := toolkit.NewHBox()
 	tenantRow.Spacing = px(gap)
-	tenantRow.AddFixed(w.tenantLabel, px(170))
+	tenantRow.AddFixed(w.tenantLabel, px(tenantLabelW))
 	tenantRow.AddFlex(w.nTenant, 1)
+	tenantRow.AddFixed(w.chooseTenant, px(refreshW))
 
-	status := toolkit.NewVBox()
-	status.Spacing = px(4)
-	status.AddFixed(w.state, px(rowH))
-	status.AddFixed(w.detail, px(rowH))
-	status.AddFixed(w.account, px(rowH))
-	status.AddFixed(w.tenant, px(rowH))
-	status.AddFixed(w.helper, px(rowH))
-	status.AddFixed(card(c.signIn, w.blankSignIn, device), 3*px(rowH)+px(btnH)+3*px(4))
-	status.AddFixed(card(c.tenant, w.blankTenant, tenantRow), px(btnH))
-	status.AddFixed(row(w.signIn, w.signOut), px(btnH))
-	status.AddFixed(row(w.connect, w.disconnect, w.chooseTenant), px(btnH))
-	status.AddFixed(w.logTitle, px(rowH))
-	status.AddFlex(w.log, 1)
+	// The detail panel: the selected server, its tenant, then the session.
+	detail := toolkit.NewVBox()
+	detail.Spacing = px(4)
+	detail.AddFixed(w.serverName, px(titleH))
+	detail.AddFixed(tenantRow, px(btnH))
+	detail.AddFixed(w.state, px(rowH))
+	detail.AddFixed(w.detail, px(rowH))
+	detail.AddFixed(w.account, px(rowH))
+	detail.AddFixed(w.tenant, px(rowH))
+	detail.AddFixed(w.helper, px(rowH))
+	detail.AddFixed(card(c.signIn, w.blankSignIn, device), px(signInCardH))
+	detail.AddFixed(row(w.signIn, w.signOut), px(btnH))
+	detail.AddFixed(row(w.connect, w.disconnect), px(btnH))
+	detail.AddFixed(w.logTitle, px(rowH))
+	detail.AddFlex(w.log, 1)
 
+	status := toolkit.NewHBox()
+	status.Spacing = px(2 * gap)
+	status.AddFixed(sidebar, px(sidebarW))
+	status.AddFlex(detail, 1)
+
+	settings := settingsForm(w, c)
+
+	header := toolkit.NewHBox()
+	header.Spacing = px(gap)
+	header.AddFixed(w.logo, px(titleH))
+	header.AddFlex(w.title, 1)
+	header.AddFixed(w.settings, px(110))
+
+	root := toolkit.NewVBox()
+	root.Spacing = px(gap)
+	root.AddFixed(header, px(titleH))
+	root.AddFlex(card(c.page, status, settings), 1)
+	root.AddFixed(w.busy, px(rowH))
+	root.AddFixed(w.message, px(rowH))
+	return toolkit.NewPopoverHost(root)
+}
+
+// settingsForm is the server's settings: its URL, the identity provider and
+// that provider's fields, Save and Cancel.
+func settingsForm(w *widgets, c *cards) *toolkit.VBox {
+	px := toolkit.Scaled
 	github := toolkit.NewVBox()
 	github.Spacing = px(4)
 	github.AddFixed(w.githubLabel, px(rowH))
@@ -279,6 +345,14 @@ func layout(w *widgets, c *cards) toolkit.Widget {
 	oidc.AddFixed(w.nIssuer, px(rowH))
 	oidc.AddFixed(w.clientLabel, px(rowH))
 	oidc.AddFixed(w.nClient, px(rowH))
+	provider := toolkit.NewContainer(c.provider)
+	provider.AddWidget(github)
+	provider.AddWidget(oidc)
+
+	buttons := toolkit.NewHBox()
+	buttons.Spacing = px(gap)
+	buttons.AddFlex(w.save, 1)
+	buttons.AddFlex(w.cancel, 1)
 
 	settings := toolkit.NewVBox()
 	settings.Spacing = px(4)
@@ -286,21 +360,20 @@ func layout(w *widgets, c *cards) toolkit.Widget {
 	settings.AddFixed(w.nServer, px(rowH))
 	settings.AddFixed(w.providerLabel, px(rowH))
 	settings.AddFixed(w.nProvider, px(rowH))
-	settings.AddFixed(card(c.provider, github, oidc), 4*px(rowH)+3*px(4))
-	settings.AddFixed(row(w.save, w.cancel), px(btnH))
+	settings.AddFixed(provider, px(providerCardH))
+	settings.AddFixed(buttons, px(btnH))
 	settings.AddFixed(w.pathLabel, px(rowH))
 	settings.AddFlex(toolkit.NewLabel(""), 1)
+	return settings
+}
 
-	header := toolkit.NewHBox()
-	header.Spacing = px(gap)
-	header.AddFlex(w.title, 1)
-	header.AddFixed(w.settings, px(110))
-
+// settingsLayout is the settings window: the form, then the line that says
+// why a save was refused.
+func settingsLayout(w *widgets, c *cards) toolkit.Widget {
+	px := toolkit.Scaled
 	root := toolkit.NewVBox()
 	root.Spacing = px(gap)
-	root.AddFixed(header, px(titleH))
-	root.AddFlex(card(c.page, status, settings), 1)
-	root.AddFixed(w.busy, px(rowH))
+	root.AddFlex(settingsForm(w, c), 1)
 	root.AddFixed(w.message, px(rowH))
 	return toolkit.NewPopoverHost(root)
 }

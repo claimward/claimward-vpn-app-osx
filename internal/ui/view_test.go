@@ -16,7 +16,7 @@ import (
 	"github.com/go-widgets/toolkit"
 )
 
-const testW, testH = 460, 720
+const testW, testH = 760, 600
 
 // newTestView is a View over f, sized and drawn once.
 func newTestView(t *testing.T, f *fakeCore) (*View, *ViewModel) {
@@ -85,7 +85,11 @@ func TestTheWindowDrawsTheStatus(t *testing.T) {
 			t.Errorf("%T is not laid out", w)
 		}
 	}
-	for _, w := range []toolkit.Widget{v.w.server, v.w.deviceCode, v.w.tenantPick} {
+	// The tenant choice is part of the server's detail panel, always there.
+	if !visible(v.w.tenantPick) || !visible(v.w.serverPane) || !visible(v.w.logo) {
+		t.Error("the sidebar, the logo or the tenant row is not laid out")
+	}
+	for _, w := range []toolkit.Widget{v.w.server, v.w.deviceCode} {
 		if visible(w) {
 			t.Errorf("%T shows on the status page", w)
 		}
@@ -128,9 +132,6 @@ func TestPanelsAppearWhenTheyApply(t *testing.T) {
 	v, vm := newTestView(t, f)
 	if !visible(v.w.deviceCode) || !visible(v.w.openPage) || v.w.deviceCode.Text().Get() != "WDJB-MJHT" {
 		t.Errorf("the device prompt is not shown: %+v %q", v.w.deviceCode.Bounds(), v.w.deviceCode.Text().Get())
-	}
-	if visible(v.w.tenantPick) {
-		t.Error("the tenant choice shows before a choice is needed")
 	}
 	// The sign-in is over (the prompt and the tenant choice never show at once).
 	f.set(func(st *appcore.Status) { st.DeviceVerificationURI, st.DeviceUserCode = "", "" })
@@ -242,13 +243,12 @@ func TestTheLogScrolls(t *testing.T) {
 
 func TestAppearanceAndScale(t *testing.T) {
 	v, _ := newTestView(t, signedOut())
+	// The brand page is deep teal in light and dark alike.
+	want := v.theme.Background
 	v.SystemAppearance(application.SystemAppearance{Dark: true})
-	if !frame(t, v) || v.theme.Background != toolkit.DefaultDark().Background {
-		t.Error("dark mode not applied")
-	}
 	v.SystemAppearance(application.SystemAppearance{})
-	if !frame(t, v) || v.theme.Background != toolkit.DefaultLight().Background {
-		t.Error("light mode not applied")
+	if frame(t, v) || v.theme.Background != want {
+		t.Error("the system appearance changed the brand page")
 	}
 	// A display of another density rebuilds the boxes at its scale.
 	old := toolkit.MetricScale()

@@ -15,6 +15,8 @@
 package ui
 
 import (
+	"net/url"
+	"slices"
 	"time"
 
 	"github.com/claimward/claimward-vpn-client/pkg/appcore"
@@ -84,6 +86,12 @@ type ViewModel struct {
 	// button reports; it follows TenantIndex and moves it when the person picks.
 	TenantName *mvvm.Observable[string]
 
+	// Servers are the sidebar's rows, one per configured server, named by host;
+	// ServerIndex is the selected one, and ServerName heads the detail panel.
+	Servers     *mvvm.ObservableList[string]
+	ServerIndex *mvvm.Observable[int]
+	ServerName  *mvvm.Observable[string]
+
 	// Log is the connection log, oldest first.
 	Log *mvvm.ObservableList[string]
 
@@ -95,6 +103,10 @@ type ViewModel struct {
 	ProviderName *mvvm.Observable[string]
 	ConfigPath   *mvvm.Observable[string]
 
+	// SettingsInWindow is true while the settings form has a window of its own
+	// (WithSettingsWindow): the main window then keeps its status page.
+	SettingsInWindow *mvvm.Observable[bool]
+
 	// TrayStatus is the tray's status line and tooltip.
 	TrayStatus *mvvm.Observable[string]
 
@@ -102,20 +114,37 @@ type ViewModel struct {
 	Connect, Disconnect, SignOut              *mvvm.Command
 	ChooseTenant                              *mvvm.Command
 	OpenSettings, SaveSettings, CloseSettings *mvvm.Command
+	// AddServer and RemoveServer are the sidebar's + and − buttons.
+	AddServer, RemoveServer *mvvm.Command
 
 	// can is what the model allows now, so commands re-evaluate with it.
 	can *mvvm.Observable[appvm.Can]
 	// options are the tenant rows last copied, to rebuild the list only when
 	// they change.
 	options []appvm.TenantOption
+
+	// openWindow and closeWindow are the settings window's: see
+	// WithSettingsWindow.
+	openWindow  func() (closeWindow func(), ok bool)
+	closeWindow func()
 }
 
 // Option configures a ViewModel.
 type Option func(*config)
 
 type config struct {
-	post func(func())
-	opts appvm.Options
+	post       func(func())
+	opts       appvm.Options
+	openWindow func() (func(), bool)
+}
+
+// WithSettingsWindow gives the settings form a window of its own. open opens
+// it and returns how to close it; ok false (a platform with one window only)
+// leaves the form on the main window's settings page. The window is closed
+// when the form is saved or cancelled; when the person closes it, the app
+// calls SettingsWindowClosed.
+func WithSettingsWindow(open func() (closeWindow func(), ok bool)) Option {
+	return func(c *config) { c.openWindow = open }
 }
 
 // WithOpener replaces how a URL is opened (application.OpenURL in the app).
@@ -142,7 +171,8 @@ func NewViewModel(core Core, opts ...Option) *ViewModel {
 	}
 	m := appvm.New(core, c.opts)
 	vm := &ViewModel{
-		m: m, post: c.post,
+		m: m, post: c.post, openWindow: c.openWindow,
+		SettingsInWindow: mvvm.NewObservable(false),
 
 		Page:    mvvm.NewObservable(PageStatus),
 		State:   mvvm.NewObservable("Loading..."),
@@ -161,6 +191,10 @@ func NewViewModel(core Core, opts ...Option) *ViewModel {
 		TenantNames: mvvm.NewObservableList[string](),
 		TenantIndex: mvvm.NewObservable(0),
 		TenantName:  mvvm.NewObservable(""),
+
+		Servers:     mvvm.NewObservableList[string](),
+		ServerIndex: mvvm.NewObservable(0),
+		ServerName:  mvvm.NewObservable(""),
 
 		Log: mvvm.NewObservableList[string](),
 
@@ -214,6 +248,15 @@ func NewViewModel(core Core, opts ...Option) *ViewModel {
 			}
 		}
 	})
+	// The form saved or cancelled: its window has done its work.
+	vm.Page.Subscribe(func(p int) {
+		if p != PageSettings && vm.closeWindow != nil {
+			close := vm.closeWindow
+			vm.closeWindow = nil
+			vm.SettingsInWindow.Set(false)
+			close()
+		}
+	})
 	vm.apply(m.State())
 	// Subscriber callbacks run on any goroutine and must not touch the
 	// observables: the state is carried to the UI thread.
@@ -237,6 +280,18 @@ func (vm *ViewModel) commands() {
 	vm.OpenSettings = cmd(vm.openSettings, func(c appvm.Can) bool { return c.OpenSettings })
 	vm.SaveSettings = cmd(vm.saveSettings, func(c appvm.Can) bool { return c.SaveSettings })
 	vm.CloseSettings = cmd(vm.m.CloseSettings, func(c appvm.Can) bool { return c.CloseSettings })
+	// The configuration holds one server for now: + opens its form, and − has
+	// nothing it may remove.
+	vm.AddServer = cmd(vm.openSettings, func(c appvm.Can) bool { return c.OpenSettings })
+	vm.RemoveServer = mvvm.NewCommand(func() {}, func() bool { return false })
+}
+
+// serverLabel names a server by its host, the URL itself when it has none.
+func serverLabel(raw string) string {
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return raw
 }
 
 // openSettings fills the form from the configuration in use.
@@ -250,6 +305,25 @@ func (vm *ViewModel) openSettings() {
 	vm.GitHubClientID.Set(f.GitHubClientID)
 	vm.OIDCIssuer.Set(f.OIDCIssuer)
 	vm.OIDCClientID.Set(f.OIDCClientID)
+	if vm.openWindow != nil && vm.closeWindow == nil {
+		if close, ok := vm.openWindow(); ok {
+			vm.closeWindow = close
+			vm.SettingsInWindow.Set(true)
+		}
+	}
+}
+
+// SettingsWindowClosed is told that the person closed the settings window: the
+// form is cancelled, as its Cancel button would.
+func (vm *ViewModel) SettingsWindowClosed() {
+	if vm.closeWindow == nil {
+		return
+	}
+	vm.closeWindow = nil
+	vm.SettingsInWindow.Set(false)
+	if vm.Page.Get() == PageSettings {
+		vm.m.CloseSettings()
+	}
 }
 
 // saveSettings hands the form to the model, which saves it (an incomplete
@@ -346,6 +420,21 @@ func (vm *ViewModel) apply(st appvm.State) {
 		vm.TenantName.Set(rows[st.TenantIndex])
 	} else {
 		vm.TenantName.Set("")
+	}
+
+	var servers []string
+	if st.Server != "" {
+		servers = []string{serverLabel(st.Server)}
+	}
+	if !slices.Equal(vm.Servers.Slice(), servers) {
+		vm.Servers.Clear()
+		vm.Servers.Append(servers...)
+	}
+	vm.ServerIndex.Set(0)
+	if len(servers) > 0 {
+		vm.ServerName.Set(servers[0])
+	} else {
+		vm.ServerName.Set("No server")
 	}
 
 	lines, appended := appvm.LogDelta(vm.Log.Slice(), st.Log)

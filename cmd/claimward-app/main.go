@@ -48,7 +48,27 @@ func run() error {
 	core := appcore.New(cfg)
 
 	queue := &ui.Queue{}
-	vm := ui.NewViewModel(core,
+	var vm *ui.ViewModel
+	// The settings form (Settings, and + under the servers) opens in a window
+	// of its own. Where the platform has one window only, it stays a page of
+	// the main window.
+	settingsWindow := func() (func(), bool) {
+		sv := ui.NewSettingsView(vm, queue)
+		w, err := application.OpenWindow(application.WindowConfig{Title: "Server settings", Width: 440, Height: 400}, sv)
+		if err != nil {
+			log.Printf("claimward-app: settings window: %v (showing the form in the main window)", err)
+			sv.Close()
+			return nil, false
+		}
+		w.OnClose(func() { sv.Close(); vm.SettingsWindowClosed() })
+		return func() {
+			if err := w.Close(); err != nil {
+				log.Printf("claimward-app: close the settings window: %v", err)
+			}
+		}, true
+	}
+	vm = ui.NewViewModel(core,
+		ui.WithSettingsWindow(settingsWindow),
 		ui.WithPost(queue.Post),
 		ui.WithOpener(application.OpenURL),
 		ui.WithInterval(2*time.Second, 500*time.Millisecond),
@@ -87,7 +107,7 @@ func run() error {
 	spec := application.Spec{Name: "Claimward", Identifier: "com.claimward.app", Version: version}
 	// Menu gives the menu bar the standard Edit menu: without it Cut, Copy and
 	// Paste have no menu route in the embedded text fields.
-	cfgApp := application.Config{Title: windowTitle, Width: 460, Height: 720, HideOnClose: true, Menu: tray.NewMenu().Add(tray.EditMenu())}
+	cfgApp := application.Config{Title: windowTitle, Width: 760, Height: 600, HideOnClose: true, Menu: tray.NewMenu().Add(tray.EditMenu())}
 	return application.Run(spec, cfgApp, view, func() {
 		// The status item joins once the window's loop runs. It is not a
 		// Spec.Tray because that builds its menu once, and the binding above
