@@ -94,22 +94,6 @@ type View struct {
 // WithPost(queue.Post).
 func NewView(vm *ViewModel, queue *Queue) *View {
 	v := newView(vm, queue, layout)
-	// While the settings form has a window of its own, this one keeps showing
-	// the status page.
-	page := func() {
-		if vm.SettingsInWindow.Get() {
-			v.cards.page.Active = PageStatus
-		} else {
-			v.cards.page.Active = vm.Page.Get()
-		}
-		v.relayout.Store(true)
-		v.wholeFrame()
-	}
-	v.unbind = append(v.unbind,
-		vm.Page.SubscribeChanged(page),
-		vm.SettingsInWindow.SubscribeChanged(page),
-	)
-	page()
 	return v
 }
 

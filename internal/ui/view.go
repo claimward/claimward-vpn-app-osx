@@ -218,6 +218,7 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 		mvvm.BindTwoWay(vm.OIDCClientID, w.nClient.Text(), of(w.nClient)),
 		mvvm.BindTwoWay(vm.ProviderName, w.nProvider.Text(), of(w.nProvider)),
 
+		mvvm.OneWay(vm.PageShown, &c.page.Active, onCard),
 		mvvm.OneWay(vm.SignInPanel, &c.signIn.Active, onCard),
 		mvvm.OneWay(vm.ProviderPanel, &c.provider.Active, onCard),
 	}

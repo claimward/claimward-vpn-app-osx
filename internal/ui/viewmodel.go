@@ -106,6 +106,9 @@ type ViewModel struct {
 	// SettingsInWindow is true while the settings form has a window of its own
 	// (WithSettingsWindow): the main window then keeps its status page.
 	SettingsInWindow *mvvm.Observable[bool]
+	// PageShown is the page the main window shows: Page, except that it stays
+	// on the status page while the settings form has a window of its own.
+	PageShown *mvvm.Observable[int]
 
 	// TrayStatus is the tray's status line and tooltip.
 	TrayStatus *mvvm.Observable[string]
@@ -173,6 +176,7 @@ func NewViewModel(core Core, opts ...Option) *ViewModel {
 	vm := &ViewModel{
 		m: m, post: c.post, openWindow: c.openWindow,
 		SettingsInWindow: mvvm.NewObservable(false),
+		PageShown:        mvvm.NewObservable(PageStatus),
 
 		Page:    mvvm.NewObservable(PageStatus),
 		State:   mvvm.NewObservable("Loading..."),
@@ -211,6 +215,15 @@ func NewViewModel(core Core, opts ...Option) *ViewModel {
 		can:        mvvm.NewObservable(appvm.Can{}),
 	}
 	vm.commands()
+	shown := func() {
+		if vm.SettingsInWindow.Get() {
+			vm.PageShown.Set(PageStatus)
+		} else {
+			vm.PageShown.Set(vm.Page.Get())
+		}
+	}
+	vm.Page.SubscribeChanged(shown)
+	vm.SettingsInWindow.SubscribeChanged(shown)
 	vm.TenantIndex.SubscribeChanged(func() {
 		if !vm.syncing {
 			m.SelectTenant(vm.TenantIndex.Get())
