@@ -37,6 +37,25 @@ func main() {
 	}
 }
 
+// openSettingsWindow opens the settings form in a window of its own through
+// open (application.OpenWindow) and returns how to close it. ok is false when
+// the platform has no second window: the form then stays in the main window.
+func openSettingsWindow(vm *ui.ViewModel, queue *ui.Queue, open func(application.WindowConfig, application.Handler) (*application.Window, error)) (func(), bool) {
+	sv := ui.NewSettingsView(vm, queue)
+	w, err := open(application.WindowConfig{Title: "Server settings", Width: 440, Height: 400}, sv)
+	if err != nil {
+		log.Printf("claimward-app: settings window: %v (showing the form in the main window)", err)
+		sv.Close()
+		return nil, false
+	}
+	w.OnClose(func() { sv.Close(); vm.SettingsWindowClosed() })
+	return func() {
+		if err := w.Close(); err != nil {
+			log.Printf("claimward-app: close the settings window: %v", err)
+		}
+	}, true
+}
+
 func run() error {
 	cfg, err := appcore.LoadConfig()
 	if err != nil {
@@ -53,19 +72,7 @@ func run() error {
 	// of its own. Where the platform has one window only, it stays a page of
 	// the main window.
 	settingsWindow := func() (func(), bool) {
-		sv := ui.NewSettingsView(vm, queue)
-		w, err := application.OpenWindow(application.WindowConfig{Title: "Server settings", Width: 440, Height: 400}, sv)
-		if err != nil {
-			log.Printf("claimward-app: settings window: %v (showing the form in the main window)", err)
-			sv.Close()
-			return nil, false
-		}
-		w.OnClose(func() { sv.Close(); vm.SettingsWindowClosed() })
-		return func() {
-			if err := w.Close(); err != nil {
-				log.Printf("claimward-app: close the settings window: %v", err)
-			}
-		}, true
+		return openSettingsWindow(vm, queue, application.OpenWindow)
 	}
 	vm = ui.NewViewModel(core,
 		ui.WithSettingsWindow(settingsWindow),

@@ -37,13 +37,13 @@ func logo() *toolkit.Image { return logoFrom(brand.MarkWhite) }
 // logoFrom decodes a PNG into the logo.
 func logoFrom(data []byte) *toolkit.Image {
 	src, err := png.Decode(bytes.NewReader(data))
-	if err != nil {
-		return toolkit.NewImageFit(nil, 0, 0)
+	if err == nil {
+		b := src.Bounds()
+		dst := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+		draw.Draw(dst, dst.Bounds(), src, b.Min, draw.Src)
+		img := toolkit.NewImageFit(dst.Pix, b.Dx(), b.Dy())
+		img.Alt = "Claimward"
+		return img
 	}
-	b := src.Bounds()
-	dst := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(dst, dst.Bounds(), src, b.Min, draw.Src)
-	img := toolkit.NewImageFit(dst.Pix, b.Dx(), b.Dy())
-	img.Alt = "Claimward"
-	return img
+	return toolkit.NewImageFit(nil, 0, 0)
 }

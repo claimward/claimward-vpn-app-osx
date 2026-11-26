@@ -133,6 +133,12 @@ func TestAWindowThatCannotOpenKeepsTheInPageForm(t *testing.T) {
 	if vm.Page.Get() != PageSettings || vm.SettingsInWindow.Get() {
 		t.Errorf("page %d inWindow %v", vm.Page.Get(), vm.SettingsInWindow.Get())
 	}
+	// No window was closed by the person: the in-page form stays open.
+	vm.SettingsWindowClosed()
+	settle(vm, q)
+	if vm.Page.Get() != PageSettings {
+		t.Error("a window-closed event cancelled the in-page form")
+	}
 	run(vm, q, vm.CloseSettings.Execute)
 	if vm.Page.Get() != PageStatus {
 		t.Errorf("page %d", vm.Page.Get())
@@ -166,8 +172,8 @@ func TestTheSettingsWindowShowsTheFormAlone(t *testing.T) {
 }
 
 func TestALogoThatDoesNotDecodeIsAnEmptyImage(t *testing.T) {
-	if img := logoFrom([]byte("not a png")); img == nil {
-		t.Fatal("no image")
+	if img := logoFrom([]byte("not a png")); img == nil || img.Alt != "" {
+		t.Fatalf("image %v", img)
 	}
 	if img := logo(); img.Alt != "Claimward" {
 		t.Errorf("alt %q", img.Alt)
