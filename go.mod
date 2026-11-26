@@ -10,7 +10,7 @@ require (
 	github.com/go-widgets/mvvmtk v0.16.0
 	github.com/go-widgets/painter v0.20.3
 	github.com/go-widgets/tabler-icons v0.1.0
-	github.com/go-widgets/toolkit v0.401.1
+	github.com/go-widgets/toolkit v0.402.1
 	github.com/go-widgets/tray v0.17.1
 )
 
@@ -20,7 +20,7 @@ require (
 	github.com/ebitengine/purego v0.11.3 // indirect
 	github.com/go-crdt/crdt v0.59.0 // indirect
 	github.com/go-freedesktop/x11 v0.3.0 // indirect
-	github.com/go-gfx/gfx v0.41.0 // indirect
+	github.com/go-gfx/gfx v0.42.0 // indirect
 	github.com/go-gfx/gpu2d v0.11.0 // indirect
 	github.com/go-gfx/vulkan v0.2.1 // indirect
 	github.com/go-gtk/gtk4 v0.16.0 // indirect
@@ -35,6 +35,7 @@ require (
 	github.com/go-opentype/shape v0.7.0 // indirect
 	github.com/go-richdoc/richdoc v0.7.0 // indirect
 	github.com/go-simd/boxfilter v0.2.0 // indirect
+	github.com/go-simd/floats v0.42.0 // indirect
 	github.com/go-typeset/bidi v0.3.1 // indirect
 	github.com/go-widgets/android v0.16.0 // indirect
 	github.com/go-widgets/gpupainter v0.4.0 // indirect
