@@ -119,6 +119,13 @@ type ViewModel struct {
 	OpenSettings, SaveSettings, CloseSettings *mvvm.Command
 	// AddServer and RemoveServer are the sidebar's + and − buttons.
 	AddServer, RemoveServer *mvvm.Command
+	// EditServer is the sidebar's gear: it opens the server window prefilled
+	// with the SELECTED entry, and cannot run with none selected.
+	// EditServerLabel is the gear's accessible name: "Edit server", plus the
+	// reason while it is disabled.
+	EditServer      *mvvm.Command
+	EditServerLabel *mvvm.Observable[string]
+	canEdit         *mvvm.Observable[bool]
 
 	// can is what the model allows now, so commands re-evaluate with it.
 	can *mvvm.Observable[appvm.Can]
@@ -297,6 +304,33 @@ func (vm *ViewModel) commands() {
 	// nothing it may remove.
 	vm.AddServer = cmd(vm.openSettings, func(c appvm.Can) bool { return c.OpenSettings })
 	vm.RemoveServer = mvvm.NewCommand(func() {}, func() bool { return false })
+	// The gear acts on the selected row. The configuration holds one server for
+	// now, so editing it is opening its form.
+	vm.canEdit = mvvm.NewObservable(false)
+	vm.EditServerLabel = mvvm.NewObservable(editServerName)
+	vm.EditServer = mvvm.NewCommand(vm.openSettings, vm.canEdit.Get)
+	mvvm.BindCanExecute(vm.EditServer, vm.canEdit)
+	vm.can.Subscribe(func(appvm.Can) { vm.refreshEdit() })
+	vm.ServerIndex.Subscribe(func(int) { vm.refreshEdit() })
+}
+
+// Accessible names of the gear: its action, and what is missing when it is off.
+const (
+	editServerName     = "Edit server"
+	editServerNoChoice = "Edit server (select a server first)"
+)
+
+// refreshEdit re-decides whether the gear may run: a server is selected and
+// the form may open.
+func (vm *ViewModel) refreshEdit() {
+	i := vm.ServerIndex.Get()
+	selected := i >= 0 && i < vm.Servers.Len()
+	vm.canEdit.Set(selected && vm.can.Get().OpenSettings)
+	if selected {
+		vm.EditServerLabel.Set(editServerName)
+	} else {
+		vm.EditServerLabel.Set(editServerNoChoice)
+	}
 }
 
 // serverLabel names a server by its host, the URL itself when it has none.
@@ -449,6 +483,7 @@ func (vm *ViewModel) apply(st appvm.State) {
 	} else {
 		vm.ServerName.Set("No server")
 	}
+	vm.refreshEdit()
 
 	lines, appended := appvm.LogDelta(vm.Log.Slice(), st.Log)
 	if !appended {
