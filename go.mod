@@ -42,7 +42,7 @@ require (
 	github.com/go-widgets/textinput v0.1.1 // indirect
 	github.com/go-widgets/vcs v0.1.0 // indirect
 	github.com/go-widgets/webcanvas v0.14.1 // indirect
-	github.com/go-widgets/window v0.110.0 // indirect
+	github.com/go-widgets/window v0.110.1 // indirect
 	github.com/godbus/dbus/v5 v5.2.4 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
