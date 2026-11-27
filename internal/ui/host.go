@@ -68,7 +68,9 @@ type View struct {
 	root  toolkit.Widget
 	// build composes the widgets: layout for the main window, settingsLayout
 	// for the settings window.
-	build func(*widgets, *cards) toolkit.Widget
+	build func(w *widgets, c *cards, total int) toolkit.Widget
+	// mainWindow is set on the main window, whose log wraps to its width.
+	mainWindow bool
 
 	theme       *toolkit.Theme
 	buf         []byte
@@ -84,6 +86,8 @@ type View struct {
 	// of the detail panel they lay out.
 	builtAt    float64
 	builtShown int
+	// builtKey is what the heights were measured from (widgets.wrapKey).
+	builtKey string
 
 	dirty, relayout atomic.Bool
 	pressed         bool
@@ -96,6 +100,7 @@ type View struct {
 // WithPost(queue.Post).
 func NewView(vm *ViewModel, queue *Queue) *View {
 	v := newView(vm, queue, layout)
+	v.mainWindow = true
 	return v
 }
 
@@ -106,7 +111,7 @@ func NewSettingsView(vm *ViewModel, queue *Queue) *View {
 	return newView(vm, queue, settingsLayout)
 }
 
-func newView(vm *ViewModel, queue *Queue, build func(*widgets, *cards) toolkit.Widget) *View {
+func newView(vm *ViewModel, queue *Queue, build func(*widgets, *cards, int) toolkit.Widget) *View {
 	v := &View{vm: vm, queue: queue, theme: brandTheme(), build: build}
 	relayout := func() { v.relayout.Store(true); v.wholeFrame() }
 	v.w, v.cards, v.unbind = bindView(vm, v.mark, relayout)
@@ -137,10 +142,16 @@ func (v *View) Resize(w, h int, _ float64) {
 // arrange (re)builds the boxes when the scale changed, and gives the tree
 // its bounds.
 func (v *View) arrange() {
-	if s := toolkit.MetricScale(); v.root == nil || s != v.builtAt || v.w.shown != v.builtShown {
-		v.root, v.builtAt, v.builtShown = v.build(v.w, v.cards), s, v.w.shown
-	}
 	m := toolkit.Scaled(margin)
+	total := max(v.width-2*m, 1)
+	key := v.w.wrapKey(total)
+	if s := toolkit.MetricScale(); v.root == nil || s != v.builtAt || v.w.shown != v.builtShown || key != v.builtKey {
+		if v.mainWindow {
+			f, width := toolkit.CurrentFont(), logWidth(total)
+			v.vm.SetLogWrap(func(line string) []string { return toolkit.WrapLines(f, line, width) })
+		}
+		v.root, v.builtAt, v.builtShown, v.builtKey = v.build(v.w, v.cards, total), s, v.w.shown, key
+	}
 	v.root.SetBounds(toolkit.Rect{X: m, Y: m, W: v.width - 2*m, H: v.high - 2*m})
 }
 
@@ -151,7 +162,8 @@ func (v *View) Frame() ([]byte, int, int, bool) {
 	if v.buf == nil {
 		return nil, 0, 0, false
 	}
-	if v.relayout.Swap(false) || v.root == nil {
+	// A text that changed may need another height: arrange re-measures.
+	if v.relayout.Swap(false) || v.root == nil || (v.dirty.Load() && v.w.wrapKey(max(v.width-2*toolkit.Scaled(margin), 1)) != v.builtKey) {
 		v.arrange()
 	}
 	if !v.dirty.Swap(false) {

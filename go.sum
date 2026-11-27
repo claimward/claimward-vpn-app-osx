@@ -1,7 +1,7 @@
 github.com/andybalholm/brotli v1.3.0 h1:IdkhjSe/+34U+fP7FSR2Q6Poj1hnHUa2GoWmzXJd6qY=
 github.com/andybalholm/brotli v1.3.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
-github.com/claimward/claimward-vpn-client v0.11.0 h1:HHY/w+rBYw5CUNhPc3OS3fYShRCBPrOJhGUvBF0YHIQ=
-github.com/claimward/claimward-vpn-client v0.11.0/go.mod h1:EvtP1sqRLAEcETntojdXPZhF/AcI38TotH7XSGL02JA=
+github.com/claimward/claimward-vpn-client v0.12.0 h1:KZ00C9qdbEZ7FWiqxtrC2Oi8ekC7rdvYn7d1BcvH3Ss=
+github.com/claimward/claimward-vpn-client v0.12.0/go.mod h1:EvtP1sqRLAEcETntojdXPZhF/AcI38TotH7XSGL02JA=
 github.com/coreos/go-oidc/v3 v3.21.0 h1:wZo4Q9Pum8dYEj0eMUPrqR+kvuGkeUplbLpNCkBqoWM=
 github.com/coreos/go-oidc/v3 v3.21.0/go.mod h1:DYCf24+ncYi+XkIH97GY1+dqoRlbaSI26KVTCI9SrY4=
 github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 h1:2tV76y6Q9BB+NEBasnqvs7e49aEBFI8ejC89PSnWH+4=
@@ -69,12 +69,12 @@ github.com/go-widgets/mvvmtk v0.16.0 h1:RGQgDsaVWw35mMcAfZzlddd/b7KlSLu9v29rt74t
 github.com/go-widgets/mvvmtk v0.16.0/go.mod h1:3ikT4ttG3/yFh737beA/q3wxL+BdkpS6kxjvVEfEGU8=
 github.com/go-widgets/painter v0.20.3 h1:cmBB1jTLuM2wbfupQ2ZXQgwUgTnqSid6CPBNA38hLow=
 github.com/go-widgets/painter v0.20.3/go.mod h1:uwNd4vsDklrWHtRaq+/Y65/qlw6FWfhXtlWvke1fulw=
-github.com/go-widgets/tabler-icons v0.1.0 h1:yj8xgig7znGiYrxB/L/3NOgT9E33KzOwLgh5dzwDzLU=
-github.com/go-widgets/tabler-icons v0.1.0/go.mod h1:kqxbNtKsFi2KoY29MO6MgnTT4obem3BsVP2tEUqOS9I=
+github.com/go-widgets/tabler-icons v0.2.0 h1:rZ7cxbM2a2qYtp1SjNB1NAFJxJSrUUUqJ1cb7vIXEiU=
+github.com/go-widgets/tabler-icons v0.2.0/go.mod h1:kqxbNtKsFi2KoY29MO6MgnTT4obem3BsVP2tEUqOS9I=
 github.com/go-widgets/textinput v0.1.1 h1:3NZD5CJm5XYSWA3YzQ64tXC86gnEQ0UlNPL5qJeIUSs=
 github.com/go-widgets/textinput v0.1.1/go.mod h1:Y/k3PDtUEMQ/4psCVKdmUStNWa/EsVAMcCKG2lEtQ5c=
-github.com/go-widgets/toolkit v0.402.1 h1:m6xZg/UNi2Ao+I9vz98qh6ZoS7Zbf+7BiPpB4ZtlKQE=
-github.com/go-widgets/toolkit v0.402.1/go.mod h1:kH9kV37fxqGKjUT2V/eWaclyxUy46mixatJ2OLE/FpM=
+github.com/go-widgets/toolkit v0.404.0 h1:4R7s8tmneW1gct1j/YxwjwC1ODjJzJHX+D9hd/LjHys=
+github.com/go-widgets/toolkit v0.404.0/go.mod h1:kH9kV37fxqGKjUT2V/eWaclyxUy46mixatJ2OLE/FpM=
 github.com/go-widgets/tray v0.17.1 h1:CQzQagefofdCvfqm4yn2iqdZUC5PsuwBHMo+UzbbvaQ=
 github.com/go-widgets/tray v0.17.1/go.mod h1:xfQHJYivkiZ6DMN4fPNnePBUj+JxRUy9u2D0/E9zOGk=
 github.com/go-widgets/vcs v0.1.0 h1:1pZQygSsKBWZepAgsTdqh1bwHBjPwaLM4p7bAAONGnk=

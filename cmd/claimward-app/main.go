@@ -93,7 +93,7 @@ func run() error {
 		ui.WithSettingsWindow(settingsWindow),
 		ui.WithPost(queue.Post),
 		ui.WithOpener(application.OpenURL),
-		ui.WithInterval(2*time.Second, 500*time.Millisecond),
+		ui.WithInterval(time.Second, 500*time.Millisecond),
 		ui.WithConfigPath("Saved to "+appcore.ConfigPath()),
 	)
 	if err := ui.UseOpenTypeText(); err != nil {
