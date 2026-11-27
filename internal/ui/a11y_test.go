@@ -8,29 +8,40 @@ import (
 	"github.com/go-widgets/toolkit"
 )
 
-// The painted Settings button is described to the platform's accessibility
-// layer as a button with its label, at its own bounds; a press on it is a click
-// there (the back-end replays one), which opens the Settings page.
-func TestPaintedSettingsButtonIsInTheAccessibilityTree(t *testing.T) {
-	v, _ := newTestView(t, signedOut())
-	frame(t, v)
-
-	var found bool
+// Every painted control that a person can act on, and every picture, is
+// described to the platform's accessibility layer with a name.
+func TestEveryControlAndPictureIsNamed(t *testing.T) {
+	v, _ := newTestView(t, twoServers())
+	names := map[string]string{}
 	for _, e := range v.A11yElements() {
-		if e.Name != "Settings" {
-			continue
+		switch e.Role {
+		case string(toolkit.RoleButton), string(toolkit.RoleImg):
+			if e.Name == "" {
+				t.Errorf("a %s at %d,%d has no name", e.Role, e.X, e.Y)
+			}
 		}
-		found = true
-		if e.Role != string(toolkit.RoleButton) {
-			t.Errorf("Settings has role %q, want %q", e.Role, toolkit.RoleButton)
-		}
-		b := v.w.settings.Bounds()
-		if e.X != b.X || e.Y != b.Y || e.W != b.W || e.H != b.H {
-			t.Errorf("Settings at %d,%d %dx%d, want its bounds %v", e.X, e.Y, e.W, e.H, b)
+		names[e.Name] = e.Role
+	}
+	for name, role := range map[string]string{
+		"Connect": string(toolkit.RoleButton), "Disconnect": string(toolkit.RoleButton),
+		"Sign out": string(toolkit.RoleButton), "Edit": string(toolkit.RoleButton),
+		editServerName: string(toolkit.RoleButton),
+		"Server logo":  string(toolkit.RoleImg), "Not connected": string(toolkit.RoleImg),
+	} {
+		if got, ok := names[name]; !ok || got != role {
+			t.Errorf("%q: role %q (present %v), want %q", name, got, ok, role)
 		}
 	}
-	if !found {
-		t.Fatal("the painted Settings button is not described to the accessibility layer")
+}
+
+func TestTheStatusIconSaysTheStatus(t *testing.T) {
+	kind := StatusIdle
+	s := newStatusIcon(func() int { return kind })
+	for k, want := range map[int]string{StatusIdle: "Not connected", StatusUp: "Connected", StatusProblem: "Problem"} {
+		kind = k
+		if got := s.A11y(); got.Name != want || got.Role != toolkit.RoleImg {
+			t.Errorf("kind %d: %+v, want %q", k, got, want)
+		}
 	}
 }
 

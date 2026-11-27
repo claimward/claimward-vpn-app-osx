@@ -7,36 +7,42 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/claimward/claimward-vpn-client/pkg/appcore"
 	"github.com/claimward/claimward-vpn-client/pkg/hproto"
 	"github.com/go-widgets/application"
 	"github.com/go-widgets/toolkit"
+
+	"github.com/claimward/claimward-vpn-app-osx/internal/backend"
 )
 
-const testW, testH = 760, 600
+const testW, testH = 760, 900
 
 // newTestView is a View over f, sized and drawn once.
-func newTestView(t *testing.T, f *fakeCore) (*View, *ViewModel) {
+func newTestView(t *testing.T, f *fakeCore, opts ...Option) (*View, *ViewModel) {
 	t.Helper()
 	q := &Queue{}
-	vm := NewViewModel(f, WithPost(q.Post))
+	vm := NewViewModel(f, append([]Option{WithPost(q.Post)}, opts...)...)
 	v := NewView(vm, q)
 	t.Cleanup(func() { vm.Stop(); vm.Wait(); v.Close() })
 	vm.Refresh()
 	v.Resize(testW, testH, 1)
-	frame(t, v)
+	settleView(t, v, vm)
 	return v, vm
 }
 
-// settleView waits for every action to finish, then runs one frame, which
-// drains what they posted.
+// settleView waits for every action to finish and runs the frames that drain
+// what they posted, until nothing more is posted.
 func settleView(t *testing.T, v *View, vm *ViewModel) {
 	t.Helper()
-	vm.Wait()
-	frame(t, v)
+	for {
+		vm.Wait()
+		frame(t, v)
+		if !v.queue.Pending() {
+			return
+		}
+	}
 }
 
 // frame runs one tick and reports whether it drew.
@@ -62,12 +68,29 @@ func click(t *testing.T, v *View, w toolkit.Widget) {
 	frame(t, v)
 }
 
-func visible(w toolkit.Widget) bool { r := w.Bounds(); return r.W > 0 && r.H > 0 }
+// clickAndSettle is a click whose command runs an action.
+func clickAndSettle(t *testing.T, v *View, vm *ViewModel, w toolkit.Widget) {
+	t.Helper()
+	click(t, v, w)
+	settleView(t, v, vm)
+}
+
+func onScreen(w toolkit.Widget) bool { r := w.Bounds(); return r.W > 0 && r.H > 0 }
+
+// typeInto types s into the entry that has focus.
+func typeInto(v *View, s string) {
+	for _, r := range s {
+		v.Key("", r)
+	}
+}
 
 func TestTheWindowDrawsTheStatus(t *testing.T) {
-	v, _ := newTestView(t, signedIn())
-	if v.w.state.Text().Get() != "Disconnected" || v.w.account.Text().Get() != "Signed in as ada@example.org" {
-		t.Errorf("labels %q %q", v.w.state.Text().Get(), v.w.account.Text().Get())
+	v, _ := newTestView(t, twoServers())
+	if v.w.values[factStatus].Text().Get() != "Disconnected" || v.w.values[factAccount].Text().Get() != "Signed in as ada@example.org" {
+		t.Errorf("labels %q %q", v.w.values[factStatus].Text().Get(), v.w.values[factAccount].Text().Get())
+	}
+	if v.w.serverName.Text().Get() != "Alpha" {
+		t.Errorf("server name %q", v.w.serverName.Text().Get())
 	}
 	if frame(t, v) {
 		t.Error("an idle window redrew")
@@ -80,19 +103,18 @@ func TestTheWindowDrawsTheStatus(t *testing.T) {
 	if bg := v.theme.Background; buf[0] != bg.R || buf[1] != bg.G || buf[2] != bg.B {
 		t.Errorf("top-left pixel %v, want %v", buf[:4], bg)
 	}
-	for _, w := range []toolkit.Widget{v.w.connect, v.w.signOut, v.w.log, v.w.settings} {
-		if !visible(w) {
+	for _, w := range []toolkit.Widget{v.w.connect, v.w.disconnect, v.w.signOut, v.w.log, v.w.servers, v.w.serverPane, v.w.serverLogo, v.w.statusIcon, v.w.edit} {
+		if !onScreen(w) {
 			t.Errorf("%T is not laid out", w)
 		}
 	}
-	// The tenant choice is part of the server's detail panel, always there.
-	if !visible(v.w.tenantPick) || !visible(v.w.serverPane) || !visible(v.w.logo) {
-		t.Error("the sidebar, the logo or the tenant row is not laid out")
-	}
-	for _, w := range []toolkit.Widget{v.w.server, v.w.deviceCode} {
-		if visible(w) {
+	for _, w := range []toolkit.Widget{v.w.nServer, v.w.deviceCode, v.w.tenantPick, v.w.signInWith[0], v.w.confirmRemove, v.w.previewLogo} {
+		if onScreen(w) {
 			t.Errorf("%T shows on the status page", w)
 		}
+	}
+	if v.w.servers.Selected().Get() != 0 || len(v.w.servers.Items) != 2 {
+		t.Errorf("servers %d selected %d", len(v.w.servers.Items), v.w.servers.Selected().Get())
 	}
 }
 
@@ -104,10 +126,9 @@ func TestClickingConnect(t *testing.T) {
 	if v.w.connect.Disabled().Get() || !v.w.disconnect.Disabled().Get() {
 		t.Error("Connect and Disconnect are not enabled as the state says")
 	}
-	click(t, v, v.w.connect)
-	settleView(t, v, vm)
-	if f.called("Connect") != 1 || vm.State.Get() != "Connected" || v.w.state.Text().Get() != "Connected" {
-		t.Errorf("Connect called %d times; state %q", f.called("Connect"), v.w.state.Text().Get())
+	clickAndSettle(t, v, vm, v.w.connect)
+	if f.called("Connect") != 1 || v.w.values[factStatus].Text().Get() != "Connected" {
+		t.Errorf("Connect called %d times; state %q", f.called("Connect"), v.w.values[factStatus].Text().Get())
 	}
 	if !v.w.connect.Disabled().Get() || v.w.disconnect.Disabled().Get() {
 		t.Error("after connecting, Connect is enabled or Disconnect is not")
@@ -117,38 +138,97 @@ func TestClickingConnect(t *testing.T) {
 	if f.called("Connect") != 1 {
 		t.Error("a disabled Connect connected")
 	}
-	click(t, v, v.w.disconnect)
-	settleView(t, v, vm)
-	if f.called("Disconnect") != 1 || v.w.state.Text().Get() != "Disconnected" {
-		t.Errorf("Disconnect called %d times; state %q", f.called("Disconnect"), v.w.state.Text().Get())
+	clickAndSettle(t, v, vm, v.w.disconnect)
+	if f.called("Disconnect") != 1 || v.w.values[factStatus].Text().Get() != "Disconnected" {
+		t.Errorf("Disconnect called %d times; state %q", f.called("Disconnect"), v.w.values[factStatus].Text().Get())
+	}
+	clickAndSettle(t, v, vm, v.w.signOut)
+	if f.called("Logout") != 1 || !onScreen(v.w.signInWith[0]) {
+		t.Errorf("Logout called %d times", f.called("Logout"))
 	}
 }
 
-// The panels appear when the ViewModel says, laid out again.
-func TestPanelsAppearWhenTheyApply(t *testing.T) {
-	f := signedIn()
-	f.offered = []hproto.Tenant{{ID: "chem", Name: "Chemistry"}, {ID: "hpc", Name: "HPC"}}
-	f.st.DeviceVerificationURI, f.st.DeviceUserCode = "https://github.com/login/device", "WDJB-MJHT"
-	v, vm := newTestView(t, f)
-	if !visible(v.w.deviceCode) || !visible(v.w.openPage) || v.w.deviceCode.Text().Get() != "WDJB-MJHT" {
-		t.Errorf("the device prompt is not shown: %+v %q", v.w.deviceCode.Bounds(), v.w.deviceCode.Text().Get())
+// Choosing a row of the list selects that server, and its detail follows.
+func TestClickingARowSelectsTheServer(t *testing.T) {
+	v, vm := newTestView(t, twoServers())
+	r := v.w.servers.Bounds()
+	rowH := v.w.servers.RowHeight
+	x, y := r.X+r.W/2, r.Y+rowH+rowH/2
+	v.MouseDown(x, y)
+	v.MouseUp(x, y)
+	settleView(t, v, vm)
+	if vm.ServerIndex.Get() != 1 || v.w.serverName.Text().Get() != "Beta" || v.w.values[factURL].Text().Get() != urlB {
+		t.Fatalf("selected %d %q", vm.ServerIndex.Get(), v.w.serverName.Text().Get())
 	}
-	// The sign-in is over (the prompt and the tenant choice never show at once).
-	f.set(func(st *appcore.Status) { st.DeviceVerificationURI, st.DeviceUserCode = "", "" })
+	// Beta lists two providers: one button each, and the sign-in rebuilds the panel.
+	if !onScreen(v.w.signInWith[0]) || !onScreen(v.w.signInWith[1]) || onScreen(v.w.signInWith[2]) {
+		t.Fatal("not one sign-in button per provider")
+	}
+	if v.w.signInWith[1].Label().Get() != "Sign in with Campus" {
+		t.Errorf("label %q", v.w.signInWith[1].Label().Get())
+	}
+}
+
+func TestSigningInFromTheWindow(t *testing.T) {
+	f := signedOut()
+	v, vm := newTestView(t, f)
+	if !onScreen(v.w.signInWith[0]) || v.w.signInWith[0].Label().Get() != "Sign in" {
+		t.Fatal("no Sign in button on a signed-out server")
+	}
+	release := f.hoist("Login")
+	click(t, v, v.w.signInWith[0])
+	f.waitFor(t, "Login", 1)
+	f.edit(urlA, func(s *appcore.ServerStatus) {
+		s.DeviceVerificationURI, s.DeviceUserCode = "https://github.com/login/device", "WDJB-MJHT"
+	})
 	vm.Refresh()
+	until(t, v.queue, func() bool { return v.w.deviceCode.Text().Get() == "WDJB-MJHT" })
 	frame(t, v)
-	if visible(v.w.deviceCode) {
+	if !onScreen(v.w.deviceCode) || !onScreen(v.w.openPage) || v.w.deviceCode.Text().Get() != "WDJB-MJHT" {
+		t.Fatalf("the device prompt is not shown: %+v %q", v.w.deviceCode.Bounds(), v.w.deviceCode.Text().Get())
+	}
+	if v.w.busy.Text().Get() == "" {
+		t.Error("nothing says a sign-in is under way")
+	}
+	click(t, v, v.w.cancelSignIn)
+	release()
+	settleView(t, v, vm)
+	f.edit(urlA, func(s *appcore.ServerStatus) { s.DeviceVerificationURI, s.DeviceUserCode = "", "" })
+	vm.Refresh()
+	settleView(t, v, vm)
+	if onScreen(v.w.deviceCode) {
 		t.Error("the device prompt outlives the sign-in")
 	}
-	click(t, v, v.w.connect)
+
+	// Signed in at last: the buttons go, the panel is laid out again.
+	f.edit(urlA, func(s *appcore.ServerStatus) { s.LoggedIn = true })
+	vm.Refresh()
 	settleView(t, v, vm)
-	if vm.TenantPanel.Get() != PanelShown || !visible(v.w.tenantPick) {
+	if visible(v.w.shown, shownProvider) {
+		t.Error("a Sign in button on a signed-in server")
+	}
+}
+
+// The tenant choice, through the DropDown as a person does: open it, click a row.
+func TestChoosingATenantInTheWindow(t *testing.T) {
+	f := signedIn()
+	f.offered = []hproto.Tenant{{ID: "chem", Name: "Chemistry"}, {ID: "hpc", Name: "HPC"}}
+	v, vm := newTestView(t, f)
+	if onScreen(v.w.tenantPick) {
+		t.Fatal("the tenant choice shows before it is asked for")
+	}
+	clickAndSettle(t, v, vm, v.w.connect)
+	if !onScreen(v.w.tenantPick) {
 		t.Fatalf("the tenant choice is not shown after ErrTenantRequired: %+v", v.w.tenantPick.Bounds())
 	}
-	if !strings.Contains(v.w.message.Text().Get(), "several tenants") {
-		t.Errorf("message %q", v.w.message.Text().Get())
+	if got := v.w.message.Text().Get(); got == "" {
+		t.Error("no message after ErrTenantRequired")
 	}
-	// Choose through the DropDown, as a person does: open it, click a row.
+	// Refresh asks the server for its tenants again.
+	clickAndSettle(t, v, vm, v.w.chooseTenant)
+	if f.called("Tenants") == 0 {
+		t.Error("Refresh did not ask for the tenants")
+	}
 	click(t, v, v.w.tenantPick)
 	if !v.w.tenantPick.Open().Get() {
 		t.Fatal("the DropDown did not open")
@@ -157,67 +237,155 @@ func TestPanelsAppearWhenTheyApply(t *testing.T) {
 	row := pb.H / 3
 	v.MouseDown(pb.X+pb.W/2, pb.Y+2*row+row/2) // the third row: HPC
 	v.MouseUp(pb.X+pb.W/2, pb.Y+2*row+row/2)
-	frame(t, v)
-	if len(f.setTenant) != 1 || f.setTenant[0] != "hpc" {
-		t.Fatalf("SetTenant %v", f.setTenant)
+	settleView(t, v, vm)
+	if c := f.last("SetTenant"); c.server != urlA || c.arg != "hpc" {
+		t.Fatalf("SetTenant %+v", c)
 	}
-	if v.w.tenant.Text().Get() != "Tenant: HPC (hpc)" {
-		t.Errorf("tenant line %q", v.w.tenant.Text().Get())
+	clickAndSettle(t, v, vm, v.w.connect)
+	if v.w.values[factTenant].Text().Get() != "Tenant: HPC (hpc)" || visible(v.w.shown, shownTenant) {
+		t.Errorf("tenant line %q", v.w.values[factTenant].Text().Get())
 	}
 }
 
-// The settings page: switched to, typed into, saved.
-func TestTypingIntoTheSettings(t *testing.T) {
-	f := signedOut()
-	f.cfg = appcore.Config{Provider: "github"}
+func TestAddingAServerFromTheWindow(t *testing.T) {
+	f := signedIn()
+	f.previews[urlC] = backend.Preview{Name: "Gamma"}
 	v, vm := newTestView(t, f)
-	click(t, v, v.w.settings)
-	frame(t, v)
-	if vm.Page.Get() != PageSettings || !visible(v.w.server) || visible(v.w.connect) {
-		t.Fatalf("page %d; server field %+v", vm.Page.Get(), v.w.server.Bounds())
-	}
-	if !visible(v.w.githubID) || visible(v.w.issuer) {
-		t.Error("the GitHub provider does not show the GitHub field alone")
+	clickAndSettle(t, v, vm, v.w.serverPane.Add)
+	if vm.Page.Get() != PageSettings || !onScreen(v.w.nServer) || onScreen(v.w.connect) {
+		t.Fatalf("page %d; server field %+v", vm.Page.Get(), v.w.nServer.Bounds())
 	}
 	click(t, v, v.w.server)
-	for _, r := range "https://vpn.example.org" {
-		v.Key("", r)
-	}
+	typeInto(v, "https://c.example.org")
 	v.Key("Backspace", 0)
 	v.Key("Left", 0)
 	v.Key("Right", 0)
 	v.Key("", 'g')
 	frame(t, v)
-	if vm.ServerURL.Get() != "https://vpn.example.org" {
-		t.Errorf("typed %q", vm.ServerURL.Get())
+	if vm.ServerURL.Get() != urlC {
+		t.Fatalf("typed %q", vm.ServerURL.Get())
 	}
-	// Ctrl+V pastes, into the field that has focus.
-	toolkit.SetClipboardText("Iv1.pasted")
-	click(t, v, v.w.githubID)
-	v.Shortcut('v', true, false)
-	v.Shortcut('v', false, false) // no modifier: not a shortcut
+	// Ctrl+V pastes into the field that has focus; no modifier is no shortcut.
+	toolkit.SetClipboardText(urlC)
+	v.Key("Backspace", 0)
+	vm.ServerURL.Set("")
 	frame(t, v)
-	if vm.GitHubClientID.Get() != "Iv1.pasted" {
-		t.Errorf("pasted %q", vm.GitHubClientID.Get())
+	click(t, v, v.w.server)
+	v.Shortcut('v', true, false)
+	v.Shortcut('v', false, false)
+	frame(t, v)
+	if vm.ServerURL.Get() != urlC {
+		t.Fatalf("pasted %q", vm.ServerURL.Get())
 	}
-	click(t, v, v.w.save)
-	settleView(t, v, vm)
-	if len(f.saved) != 1 || f.saved[0].ServerURL != "https://vpn.example.org" || f.saved[0].GitHubClientID != "Iv1.pasted" {
-		t.Fatalf("saved %+v", f.saved)
+	clickAndSettle(t, v, vm, v.w.next)
+	if vm.FormCard.Get() != FormPreview || !onScreen(v.w.previewLogo) || v.w.previewName.Text().Get() != "Gamma" {
+		t.Fatalf("card %d name %q", vm.FormCard.Get(), v.w.previewName.Text().Get())
 	}
-	if vm.Page.Get() != PageStatus || !visible(v.w.connect) || visible(v.w.server) {
-		t.Error("saving did not return to the status page")
+	clickAndSettle(t, v, vm, v.w.back)
+	if vm.FormCard.Get() != FormURL {
+		t.Fatalf("card %d after Back", vm.FormCard.Get())
+	}
+	clickAndSettle(t, v, vm, v.w.cancel)
+	if vm.Page.Get() != PageStatus || !onScreen(v.w.connect) {
+		t.Fatal("Cancel did not return to the servers")
+	}
+
+	clickAndSettle(t, v, vm, v.w.serverPane.Add)
+	click(t, v, v.w.server)
+	typeInto(v, urlC)
+	clickAndSettle(t, v, vm, v.w.next)
+	clickAndSettle(t, v, vm, v.w.cancelPreview)
+	if vm.Page.Get() != PageStatus {
+		t.Fatal("Cancel on the preview did not return to the servers")
+	}
+
+	clickAndSettle(t, v, vm, v.w.serverPane.Add)
+	click(t, v, v.w.server)
+	typeInto(v, urlC)
+	clickAndSettle(t, v, vm, v.w.next)
+	clickAndSettle(t, v, vm, v.w.add)
+	if f.last("AddServer").server != urlC || vm.Page.Get() != PageStatus || len(v.w.servers.Items) != 2 {
+		t.Fatalf("AddServer %+v page %d rows %d", f.last("AddServer"), vm.Page.Get(), len(v.w.servers.Items))
 	}
 }
 
-func TestTheProviderChoiceSwitchesTheFields(t *testing.T) {
-	v, vm := newTestView(t, signedOut())
-	vm.OpenSettings.Execute()
-	frame(t, v)
-	vm.ProviderIndex.Set(1)
-	frame(t, v)
-	if v.w.provider.Selected().Get() != 1 || !visible(v.w.issuer) || !visible(v.w.clientID) || visible(v.w.githubID) {
-		t.Errorf("OIDC: issuer %+v github %+v", v.w.issuer.Bounds(), v.w.githubID.Bounds())
+func TestEditingAServerFromTheWindow(t *testing.T) {
+	f := twoServers()
+	v, vm := newTestView(t, f)
+	r := v.w.servers.Bounds()
+	h := v.w.servers.RowHeight
+	v.MouseDown(r.X+r.W/2, r.Y+h+h/2)
+	v.MouseUp(r.X+r.W/2, r.Y+h+h/2)
+	settleView(t, v, vm)
+	clickAndSettle(t, v, vm, v.w.edit)
+	if vm.FormCard.Get() != FormEdit || !onScreen(v.w.provider) || v.w.editURL.Text().Get() != urlB {
+		t.Fatalf("card %d url %q", vm.FormCard.Get(), v.w.editURL.Text().Get())
+	}
+	click(t, v, v.w.provider)
+	pb := v.w.provider.PopoverBounds()
+	row := pb.H / 2
+	v.MouseDown(pb.X+pb.W/2, pb.Y+row+row/2) // the second row: Campus
+	v.MouseUp(pb.X+pb.W/2, pb.Y+row+row/2)
+	settleView(t, v, vm)
+	if c := f.last("SetProvider"); c.server != urlB || c.arg != "campus" {
+		t.Fatalf("SetProvider %+v", c)
+	}
+	clickAndSettle(t, v, vm, v.w.done)
+	if vm.Page.Get() != PageStatus {
+		t.Fatal("Done did not return to the servers")
+	}
+	// The gear opens the same form.
+	clickAndSettle(t, v, vm, v.w.serverPane.Extra[0])
+	if vm.FormCard.Get() != FormEdit {
+		t.Fatal("the gear did not edit the server")
+	}
+}
+
+func TestRemovingAServerFromTheWindow(t *testing.T) {
+	f := twoServers()
+	f.approved[urlA] = true
+	v, vm := newTestView(t, f)
+	if onScreen(v.w.confirmRemove) {
+		t.Fatal("the removal question shows by itself")
+	}
+	clickAndSettle(t, v, vm, v.w.serverPane.Remove)
+	if !onScreen(v.w.confirmRemove) || v.w.removeText.Text().Get() != "Remove Alpha?" {
+		t.Fatalf("removal card %+v %q", v.w.confirmRemove.Bounds(), v.w.removeText.Text().Get())
+	}
+	clickAndSettle(t, v, vm, v.w.cancelRemove)
+	if onScreen(v.w.confirmRemove) || f.called("RemoveServer") != 0 {
+		t.Fatal("Cancel removed the server")
+	}
+	clickAndSettle(t, v, vm, v.w.serverPane.Remove)
+	clickAndSettle(t, v, vm, v.w.confirmRevoke)
+	if f.called("Revoke") != 1 || f.last("RemoveServer").server != urlA || len(v.w.servers.Items) != 1 {
+		t.Fatalf("revoke %d removed %+v rows %d", f.called("Revoke"), f.last("RemoveServer"), len(v.w.servers.Items))
+	}
+	clickAndSettle(t, v, vm, v.w.serverPane.Remove)
+	clickAndSettle(t, v, vm, v.w.confirmRemove)
+	if len(v.w.servers.Items) != 0 || v.w.serverName.Text().Get() != "No server" {
+		t.Errorf("rows %d name %q", len(v.w.servers.Items), v.w.serverName.Text().Get())
+	}
+}
+
+func TestTheServerWindowIsTheFormAlone(t *testing.T) {
+	f := signedIn()
+	q := &Queue{}
+	var sv *View
+	vm := NewViewModel(f, WithPost(q.Post), WithSettingsWindow(func() (func(), bool) { return func() {}, true }))
+	v := NewView(vm, q)
+	sv = NewSettingsView(vm, q)
+	t.Cleanup(func() { vm.Stop(); vm.Wait(); v.Close(); sv.Close() })
+	vm.Refresh()
+	v.Resize(testW, testH, 1)
+	sv.Resize(testW, testH, 1)
+	settleView(t, v, vm)
+	frame(t, sv)
+	vm.AddServer.Execute()
+	settleView(t, v, vm)
+	frame(t, sv)
+	if !onScreen(sv.w.nServer) || !onScreen(sv.w.next) || v.vm.PageShown.Get() != PageStatus {
+		t.Fatalf("form %+v", sv.w.nServer.Bounds())
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/claimward/claimward-vpn-client/pkg/appcore"
 	"github.com/go-widgets/tray"
@@ -79,20 +78,17 @@ func TestTheTrayFollowsTheViewModel(t *testing.T) {
 
 func TestTheTrayOffersNothingWhileBusy(t *testing.T) {
 	f := signedIn()
-	f.connectWait = make(chan struct{})
+	release := f.hoist("Connect")
 	vm, q := newVM(t, f)
 	tr := &fakeTray{}
 	BindTray(tr, vm, q.Post, TrayActions{})
 	vm.Connect.Execute()
-	deadline := time.Now().Add(5 * time.Second)
-	for f.called("Connect") == 0 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
+	f.waitFor(t, "Connect", 1)
 	q.Drain()
 	if mm := tr.last(); !item(mm, "Connect").Disabled || !item(mm, "Disconnect").Disabled {
 		t.Error("the tray offers Connect while connecting")
 	}
-	close(f.connectWait)
+	release()
 	settle(vm, q)
 }
 
@@ -104,17 +100,16 @@ type notifier struct {
 func (n *notifier) Notify(x tray.Notification) error { n.got = append(n.got, x); return n.err }
 
 func TestADroppedTunnelIsOneNotificationNotOnePerPoll(t *testing.T) {
-	vm := NewViewModel(signedIn())
+	vm, _ := newVM(t, signedIn())
 	n := &notifier{}
 	opened := 0
 	var logged []string
 	unbind := BindNotifications(n, vm, func() { opened++ }, func(f string, a ...any) { logged = append(logged, f) })
 	defer unbind()
 
-	up := appcore.Status{ConfigOK: true, LoggedIn: true, HelperInstalled: true, Connected: true}
-	down := up
-	down.Connected = false
-	vm.Apply(up)
+	conn := appcore.Status{ConfigOK: true, HelperInstalled: true, Servers: []appcore.ServerStatus{up(alpha())}}
+	down := appcore.Status{ConfigOK: true, HelperInstalled: true, Servers: []appcore.ServerStatus{in(alpha())}}
+	vm.Apply(conn)
 	for i := 0; i < 10; i++ {
 		vm.Apply(down)
 	}
@@ -131,7 +126,7 @@ func TestADroppedTunnelIsOneNotificationNotOnePerPoll(t *testing.T) {
 
 	// A notification that cannot be shown is logged and stops nothing.
 	n.err = context.DeadlineExceeded
-	vm.Apply(up)
+	vm.Apply(conn)
 	vm.Apply(down)
 	if len(n.got) != 2 || len(logged) != 1 {
 		t.Fatalf("got %d, logged %v", len(n.got), logged)
@@ -139,7 +134,7 @@ func TestADroppedTunnelIsOneNotificationNotOnePerPoll(t *testing.T) {
 
 	// Once detached, a drop notifies no one.
 	unbind()
-	vm.Apply(up)
+	vm.Apply(conn)
 	vm.Apply(down)
 	if len(n.got) != 2 {
 		t.Fatal("a detached binding notified")
@@ -147,8 +142,7 @@ func TestADroppedTunnelIsOneNotificationNotOnePerPoll(t *testing.T) {
 }
 
 func TestThePersonsOwnDisconnectIsNotNotified(t *testing.T) {
-	f := signedIn()
-	f.st.Connected = true
+	f := newCore(up(alpha()))
 	vm, q := newVM(t, f)
 	n := &notifier{}
 	defer BindNotifications(n, vm, func() {}, t.Logf)()

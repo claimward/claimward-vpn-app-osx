@@ -5,15 +5,25 @@ package main
 import (
 	"testing"
 
+	"github.com/claimward/claimward-vpn-app-osx/internal/backend"
 	"github.com/claimward/claimward-vpn-app-osx/internal/ui"
 	"github.com/claimward/claimward-vpn-client/pkg/appcore"
+	"github.com/claimward/claimward-vpn-client/pkg/discovery"
+	"github.com/claimward/claimward-vpn-client/pkg/helperclient"
+	"github.com/claimward/claimward-vpn-client/pkg/macauth"
 	"github.com/go-widgets/application"
 )
+
+// testCore is the app's own core over an unconfigured client, as run builds it.
+func testCore() *backend.Backend {
+	cfg := &appcore.Config{}
+	return backend.New(appcore.New(cfg), helperclient.New(cfg.SocketPath), discovery.New(nil), macauth.Obtain)
+}
 
 // A platform with one window (open fails) leaves the form on the main window.
 func TestASecondWindowThatCannotOpenIsNotOffered(t *testing.T) {
 	q := &ui.Queue{}
-	vm := ui.NewViewModel(appcore.New(&appcore.Config{Provider: "github"}), ui.WithPost(q.Post))
+	vm := ui.NewViewModel(testCore(), ui.WithPost(q.Post))
 	t.Cleanup(func() { vm.Stop(); vm.Wait() })
 	var cfg application.WindowConfig
 	// A panic (a broken error guard) is a failed assertion, so it does not end
@@ -30,7 +40,7 @@ func TestASecondWindowThatCannotOpenIsNotOffered(t *testing.T) {
 	if ok || closeWin != nil {
 		t.Errorf("ok %v close %v", ok, closeWin != nil)
 	}
-	if cfg.Title != "Server settings" || cfg.Width != 440 {
+	if cfg.Title != "Server" || cfg.Width != 480 {
 		t.Errorf("window %+v", cfg)
 	}
 }
@@ -43,7 +53,7 @@ func TestTheFormStaysInTheMainWindowWhenTheWindowCannotOpen(t *testing.T) {
 	q := &ui.Queue{}
 	var vm *ui.ViewModel
 	var opened int
-	vm = ui.NewViewModel(appcore.New(&appcore.Config{Provider: "github"}),
+	vm = ui.NewViewModel(testCore(),
 		ui.WithPost(q.Post),
 		ui.WithSettingsWindow(func() (func(), bool) {
 			opened++
@@ -59,7 +69,7 @@ func TestTheFormStaysInTheMainWindowWhenTheWindowCannotOpen(t *testing.T) {
 	t.Cleanup(func() { vm.Stop(); vm.Wait() })
 	vm.Refresh()
 	q.Drain()
-	vm.OpenSettings.Execute()
+	vm.AddServer.Execute()
 	vm.Wait()
 	q.Drain()
 	if opened != 1 {
