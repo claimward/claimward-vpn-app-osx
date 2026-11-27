@@ -39,6 +39,9 @@ func settleView(t *testing.T, v *View, vm *ViewModel) {
 	for {
 		vm.Wait()
 		frame(t, v)
+		// A frame runs posted results, and one of them may start more work
+		// (a revoke, then the removal): wait for that too before judging.
+		vm.Wait()
 		if !v.queue.Pending() {
 			return
 		}
