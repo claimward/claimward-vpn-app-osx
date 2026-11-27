@@ -214,7 +214,7 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 	w.serverTitle.SetFontSize(15)
 	w.ifaceTitle.SetFontSize(15)
 	w.peerTitle.SetFontSize(15)
-	w.servers.RowHeight = toolkit.Scaled(serverRowH)
+	w.servers.RowHeight = serverRowH // logical: the list scales it
 	w.servers.ItemRenderer = toolkit.LogoRows(func(i int) toolkit.LogoRow {
 		name, state := splitRow(at(w.servers.Items, i))
 		return toolkit.LogoRow{Doc: vm.RowLogo(i), Title: name, Subtitle: state}

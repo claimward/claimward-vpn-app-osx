@@ -73,10 +73,10 @@ github.com/go-widgets/tabler-icons v0.2.0 h1:rZ7cxbM2a2qYtp1SjNB1NAFJxJSrUUUqJ1c
 github.com/go-widgets/tabler-icons v0.2.0/go.mod h1:kqxbNtKsFi2KoY29MO6MgnTT4obem3BsVP2tEUqOS9I=
 github.com/go-widgets/textinput v0.1.1 h1:3NZD5CJm5XYSWA3YzQ64tXC86gnEQ0UlNPL5qJeIUSs=
 github.com/go-widgets/textinput v0.1.1/go.mod h1:Y/k3PDtUEMQ/4psCVKdmUStNWa/EsVAMcCKG2lEtQ5c=
-github.com/go-widgets/toolkit v0.405.0 h1:XtkA9JFSXCYdYS4fsy14pIotkaUQnqTwtDg0+lb7f70=
-github.com/go-widgets/toolkit v0.405.0/go.mod h1:kH9kV37fxqGKjUT2V/eWaclyxUy46mixatJ2OLE/FpM=
-github.com/go-widgets/tray v0.17.1 h1:CQzQagefofdCvfqm4yn2iqdZUC5PsuwBHMo+UzbbvaQ=
-github.com/go-widgets/tray v0.17.1/go.mod h1:xfQHJYivkiZ6DMN4fPNnePBUj+JxRUy9u2D0/E9zOGk=
+github.com/go-widgets/toolkit v0.406.0 h1:E/G3aISLUZeSbLJa4L7rjm0/XpxLNwCOQnLbBoP8pKQ=
+github.com/go-widgets/toolkit v0.406.0/go.mod h1:kH9kV37fxqGKjUT2V/eWaclyxUy46mixatJ2OLE/FpM=
+github.com/go-widgets/tray v0.18.0 h1:odf8dsOmzCBIeIvBZzwUwCfN5UXabGzJp71X6UIwcVc=
+github.com/go-widgets/tray v0.18.0/go.mod h1:xfQHJYivkiZ6DMN4fPNnePBUj+JxRUy9u2D0/E9zOGk=
 github.com/go-widgets/vcs v0.1.0 h1:1pZQygSsKBWZepAgsTdqh1bwHBjPwaLM4p7bAAONGnk=
 github.com/go-widgets/vcs v0.1.0/go.mod h1:c2SbtsVVLJUJAf/vOeMKkFWZRFyMAeDrY8rfyUyIevs=
 github.com/go-widgets/webcanvas v0.14.1 h1:FKCY96ERrfLGX2D6QZmUGZ32qbwlAPFOMidkuY3E3UM=

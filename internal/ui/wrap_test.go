@@ -143,10 +143,25 @@ func TestEveryButtonHasAnIcon(t *testing.T) {
 }
 
 func TestTheServerRowsGrowToHoldAWrappedName(t *testing.T) {
-	short := serverRowHeight([]string{"A, Signed in"}, toolkit.Scaled(sidebarW))
-	long := serverRowHeight([]string{longValue + ", Signed in"}, toolkit.Scaled(sidebarW))
+	short := serverRowPx([]string{"A, Signed in"}, toolkit.Scaled(sidebarW))
+	long := serverRowPx([]string{longValue + ", Signed in"}, toolkit.Scaled(sidebarW))
 	if short < toolkit.Scaled(serverRowH) || long <= short || long > textBlock(maxRowLines)+6*toolkit.Scaled(4) {
 		t.Errorf("row heights %d (short) and %d (long)", short, long)
+	}
+	// ListBox.RowHeight is logical: drawn (scaled) it holds the device height, at
+	// every scale, and the one-pixel-per-point case is the identity.
+	old := toolkit.MetricScale()
+	t.Cleanup(func() { toolkit.SetMetricScale(old) })
+	for _, s := range []float64{1, 1.5, 2, 3} {
+		toolkit.SetMetricScale(s)
+		px := serverRowPx([]string{longValue + ", Signed in"}, toolkit.Scaled(sidebarW))
+		if got := toolkit.Scaled(serverRowHeight([]string{longValue + ", Signed in"}, toolkit.Scaled(sidebarW))); got < px || got > px+int(s)+1 {
+			t.Errorf("at %vx the row draws %d px for %d needed", s, got, px)
+		}
+	}
+	toolkit.SetMetricScale(1)
+	if logical(40) != 40 {
+		t.Errorf("logical(40) at 1x = %d", logical(40))
 	}
 	if textBlock(0) != 0 {
 		t.Error("no lines take no room")

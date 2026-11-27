@@ -9,6 +9,7 @@
 package ui
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -116,9 +117,21 @@ func (c *column) SetBounds(r toolkit.Rect) {
 	c.SetContentSize(w, h)
 }
 
-// serverRowHeight is the height of a server row that holds its wrapped name and
-// state beside a logo as tall as the row (what toolkit.LogoRows draws).
+// logical is px device pixels as logical pixels, rounded up so that drawing
+// them (toolkit.Scaled) never gives less than px: ListBox.RowHeight is logical.
+func logical(px int) int {
+	return int(math.Ceil(float64(px) / toolkit.MetricScale()))
+}
+
+// serverRowHeight is the LOGICAL height (ListBox.RowHeight) of a server row that
+// holds its wrapped name and state beside a logo as tall as the row (what
+// toolkit.LogoRows draws). listW is in device pixels.
 func serverRowHeight(items []string, listW int) int {
+	return logical(serverRowPx(items, listW))
+}
+
+// serverRowPx is serverRowHeight in device pixels.
+func serverRowPx(items []string, listW int) int {
 	f := toolkit.CurrentFont()
 	pad := toolkit.Scaled(4)
 	h := toolkit.Scaled(serverRowH)
