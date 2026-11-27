@@ -230,7 +230,12 @@ func TestTheLogWrapsToItsRows(t *testing.T) {
 	if got := vm.LogRows.Slice(); !reflect.DeepEqual(got, []string{"one", "two", "words"}) {
 		t.Fatalf("wrapped rows %q", got)
 	}
+	touched := 0
+	vm.LogRows.SubscribeChanged(func() { touched++ })
 	vm.rewrapLog() // unchanged: the list is not touched again
+	if touched != 0 {
+		t.Errorf("an unchanged log rewrote its rows %d times", touched)
+	}
 	vm.SetLogWrap(nil)
 	if got := vm.LogRows.Slice(); len(got) != 2 {
 		t.Fatalf("rows %q after the wrap was removed", got)

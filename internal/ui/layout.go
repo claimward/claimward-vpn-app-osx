@@ -79,6 +79,25 @@ func textBlock(n int) int {
 	return n*f.Height() + (n-1)*toolkit.Scaled(toolkit.CardLineSpacing)
 }
 
+// cardHeight is the room a card takes: none while another page than shown is
+// active, h while it shows.
+func cardHeight(active, shown, h int) int {
+	if active != shown {
+		return 0
+	}
+	return h
+}
+
+// anyShown says whether any fact from first to last is in the shown mask.
+func anyShown(mask, first, last int) bool {
+	for i := first; i <= last; i++ {
+		if visible(mask, i) {
+			return true
+		}
+	}
+	return false
+}
+
 // maxRowLines is the most lines a server row grows to hold.
 const maxRowLines = 4
 
@@ -216,11 +235,7 @@ func layout(w *widgets, c *cards, total int) toolkit.Widget {
 		detail.add(h, max(px(factH), w.keys[i].HeightFor(px(keyW)), w.values[i].HeightFor(max(valueW, 1))))
 	}
 	section := func(title *toolkit.Label, first, last int) {
-		shown := false
-		for i := first; i <= last; i++ {
-			shown = shown || visible(w.shown, i)
-		}
-		if !shown {
+		if !anyShown(w.shown, first, last) {
 			return // a section with nothing to show has no title either
 		}
 		detail.add(title, px(rowH))
@@ -267,20 +282,13 @@ func layout(w *widgets, c *cards, total int) toolkit.Widget {
 		signIn, h := buttonRow(detailW, providers...)
 		detail.add(signIn, h)
 	}
-	// A card that is not showing takes no room; one that is takes what it holds.
-	cardH := func(l *toolkit.CardLayout, shown int, h int) int {
-		if l.Active != shown {
-			return 0
-		}
-		return h
-	}
-	detail.add(card(c.signIn, w.blank[0], device.VBox), cardH(c.signIn, PanelShown, max(px(signInCardH), device.height())))
+	detail.add(card(c.signIn, w.blank[0], device.VBox), cardHeight(c.signIn.Active, PanelShown, max(px(signInCardH), device.height())))
 	session, h := buttonRow(detailW, w.connect, w.disconnect, w.signOut)
 	detail.add(session, h)
 	if visible(w.shown, shownNote) {
 		detail.add(w.connectNote, rowFor(w.connectNote, detailW))
 	}
-	detail.add(card(c.remove, w.blank[1], removal.VBox), cardH(c.remove, PanelShown, max(px(removeCardH), removal.height())))
+	detail.add(card(c.remove, w.blank[1], removal.VBox), cardHeight(c.remove.Active, PanelShown, max(px(removeCardH), removal.height())))
 	detail.add(w.log, px(logH))
 	// The panel scrolls when its rows are taller than the window; the Edit
 	// button stays under it.

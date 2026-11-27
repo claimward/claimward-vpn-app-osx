@@ -104,6 +104,35 @@ func TestTheLogWrapsInsteadOfRunningPastItsEdge(t *testing.T) {
 	}
 }
 
+func TestACardThatIsNotShowingTakesNoRoom(t *testing.T) {
+	for active, want := range map[int]int{PanelHidden: 0, PanelShown: 90, 2: 0} {
+		if got := cardHeight(active, PanelShown, 90); got != want {
+			t.Errorf("card %d takes %d, want %d", active, got, want)
+		}
+	}
+}
+
+func TestASectionWithNothingToShowHasNoTitle(t *testing.T) {
+	if anyShown(0, factEndpoint, factTransfer) || anyShown(1<<factStatus, factEndpoint, factTransfer) {
+		t.Error("an empty section reports a fact")
+	}
+	if !anyShown(1<<factTransfer, factEndpoint, factTransfer) || !anyShown(1<<factEndpoint, factEndpoint, factTransfer) {
+		t.Error("a section with a fact at either end reports none")
+	}
+	// In the window: no Peer title while disconnected, one when connected.
+	f := twoServers()
+	v, vm := newTestView(t, f)
+	if onScreen(v.w.peerTitle) || !onScreen(v.w.ifaceTitle) {
+		t.Errorf("disconnected: peer title %+v interface title %+v", v.w.peerTitle.Bounds(), v.w.ifaceTitle.Bounds())
+	}
+	f.edit(urlA, func(s *appcore.ServerStatus) { s.Connected, s.Endpoint = true, "vpn.example.org:51820" })
+	vm.Refresh()
+	settleView(t, v, vm)
+	if !onScreen(v.w.peerTitle) {
+		t.Error("connected: no Peer title over the endpoint")
+	}
+}
+
 func TestEveryButtonHasAnIcon(t *testing.T) {
 	v, _ := newTestView(t, twoServers())
 	for _, b := range v.w.buttons() {
