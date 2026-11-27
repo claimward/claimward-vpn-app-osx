@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -82,7 +83,14 @@ const (
 	factTenant
 	factStatus
 	factAddress
+	factDNS
+	factMTU
 	factLease
+	// The peer section: the server end of the tunnel.
+	factEndpoint
+	factAllowedIPs
+	factHandshake
+	factTransfer
 	nFacts
 )
 
@@ -179,6 +187,9 @@ type ViewModel struct {
 
 	// Log is the connection log, oldest first.
 	Log *mvvm.ObservableList[string]
+	// LogRows is Log as shown: each line split by the wrap function (SetLogWrap),
+	// so no line is wider than the log.
+	LogRows *mvvm.ObservableList[string]
 
 	// The server window. FormCard is its card (FormURL, FormPreview, FormEdit).
 	// ServerURL is the URL typed (or, editing, the entry's), FormMsg what
@@ -240,6 +251,9 @@ type ViewModel struct {
 	// WithSettingsWindow.
 	openWindow  func() (closeWindow func(), ok bool)
 	closeWindow func()
+
+	// logWrap splits a log line into the rows shown (SetLogWrap).
+	logWrap func(string) []string
 }
 
 // Option configures a ViewModel.
@@ -317,7 +331,8 @@ func NewViewModel(core Core, opts ...Option) *ViewModel {
 		ConnectNote: mvvm.NewObservable(""),
 		connectOK:   mvvm.NewObservable(false),
 
-		Log: mvvm.NewObservableList[string](),
+		Log:     mvvm.NewObservableList[string](),
+		LogRows: mvvm.NewObservableList[string](),
 
 		FormCard:      mvvm.NewObservable(FormURL),
 		ServerURL:     mvvm.NewObservable(""),
@@ -748,6 +763,33 @@ func (vm *ViewModel) apply(st appvm.State) {
 	if len(loglines) > 0 || !appended {
 		vm.Log.Append(loglines...)
 	}
+	vm.rewrapLog()
+}
+
+// SetLogWrap sets how a log line is split into the rows the log shows: the
+// View knows the width and the font, the ViewModel the lines. nil shows each
+// line as it is. It runs on the UI thread.
+func (vm *ViewModel) SetLogWrap(wrap func(string) []string) {
+	vm.logWrap = wrap
+	vm.rewrapLog()
+}
+
+// rewrapLog rebuilds LogRows from Log through the wrap function, touching the
+// list only when its rows changed.
+func (vm *ViewModel) rewrapLog() {
+	var rows []string
+	for _, l := range vm.Log.Slice() {
+		if vm.logWrap == nil {
+			rows = append(rows, l)
+			continue
+		}
+		rows = append(rows, vm.logWrap(l)...)
+	}
+	if slices.Equal(rows, vm.LogRows.Slice()) {
+		return
+	}
+	vm.LogRows.Clear()
+	vm.LogRows.Append(rows...)
 }
 
 // at is rows[i], "" when there is no such row.
@@ -850,6 +892,26 @@ func (vm *ViewModel) facts(st appvm.State) {
 	set(factStatus, st.Headline)
 	set(factAddress, val(has && st.Connected, st.Address))
 	set(factLease, val(has && st.Connected, vm.lease(st.Server)))
+	t := st.Tunnel
+	if t == nil || !has {
+		t = &appvm.TunnelInfo{}
+	}
+	set(factDNS, strings.Join(t.DNS, ", "))
+	if t.MTU > 0 {
+		set(factMTU, strconv.Itoa(t.MTU))
+	} else {
+		set(factMTU, "")
+	}
+	set(factEndpoint, t.Endpoint)
+	set(factAllowedIPs, strings.Join(t.AllowedIPs, ", "))
+	set(factHandshake, "")
+	set(factTransfer, "")
+	if st.Tunnel != nil && has {
+		if t.LastHandshake != nil {
+			set(factHandshake, ago(vm.now().Sub(*t.LastHandshake)))
+		}
+		set(factTransfer, transfer(t.RxBytes, t.TxBytes))
+	}
 
 	kind := StatusIdle
 	switch {
@@ -917,5 +979,39 @@ func relative(d time.Duration) string {
 	h := int(d.Hours())
 	return fmt.Sprintf("in %d h %d min", h, int(d.Minutes())%60)
 }
+
+// ago says how long ago something happened, as WireGuard's "latest handshake"
+// does: "12 s ago", "3 min 5 s ago", "2 h 1 min ago".
+func ago(d time.Duration) string {
+	switch {
+	case d < time.Second:
+		return "just now"
+	case d < time.Minute:
+		return fmt.Sprintf("%d s ago", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%d min %d s ago", int(d.Minutes()), int(d.Seconds())%60)
+	}
+	return fmt.Sprintf("%d h %d min ago", int(d.Hours()), int(d.Minutes())%60)
+}
+
+// size says a byte count in the largest binary unit that keeps it above one.
+func size(n uint64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	f, suffix := float64(n), ""
+	for _, s := range []string{"KiB", "MiB", "GiB", "TiB", "PiB", "EiB"} {
+		f /= unit
+		suffix = s
+		if f < unit {
+			break
+		}
+	}
+	return fmt.Sprintf("%.2f %s", f, suffix)
+}
+
+// transfer is the peer's traffic, as WireGuard shows it: received, then sent.
+func transfer(rx, tx uint64) string { return size(rx) + " received, " + size(tx) + " sent" }
 
 func sameOptions(a, b []appvm.TenantOption) bool { return slices.Equal(a, b) }

@@ -25,34 +25,6 @@ func inked(buf []byte) bool {
 	return false
 }
 
-func TestALogoWithAndWithoutADocument(t *testing.T) {
-	ink := toolkit.RGBA{R: 255, G: 255, B: 255, A: 255}
-	for _, doc := range []string{"", circle} {
-		p, buf := canvas()
-		drawLogo(p, toolkit.Rect{X: 8, Y: 8, W: 32, H: 32}, doc, ink)
-		if !inked(buf) {
-			t.Errorf("document %q drew nothing", doc)
-		}
-	}
-}
-
-func TestTheLogoViewIsSquareAndNamed(t *testing.T) {
-	doc := ""
-	l := newLogoView("Server logo", func() string { return doc })
-	l.SetBounds(toolkit.Rect{X: 4, Y: 4, W: 50, H: 30})
-	for _, d := range []string{"", circle} {
-		doc = d
-		p, buf := canvas()
-		l.Draw(p, brandTheme())
-		if !inked(buf) {
-			t.Errorf("document %q drew nothing", d)
-		}
-	}
-	if a := l.A11y(); a.Role != toolkit.RoleImg || a.Name != "Server logo" {
-		t.Errorf("a11y %+v", a)
-	}
-}
-
 func TestTheStatusIconIsInkedPerKind(t *testing.T) {
 	kind := StatusIdle
 	s := newStatusIcon(func() int { return kind })
@@ -67,16 +39,25 @@ func TestTheStatusIconIsInkedPerKind(t *testing.T) {
 	}
 }
 
-func TestAServerRowShowsTheLogoNameAndState(t *testing.T) {
+// The server list and the detail panel's logos come from the toolkit's widgets,
+// bound to the ViewModel's documents.
+func TestTheServerListAndLogoShowTheServersLogo(t *testing.T) {
 	f := twoServers()
 	f.logos[urlA] = []byte(circle)
-	vm, _ := newVM(t, f)
-	draw := serverRow(vm)
+	v, vm := newTestView(t, f)
+	settleView(t, v, vm)
+	if vm.LogoDoc() == "" || vm.RowLogo(0) == "" {
+		t.Fatalf("the ViewModel holds no logo: %q %q", vm.LogoDoc(), vm.RowLogo(0))
+	}
+	draw := v.w.servers.ItemRenderer
 	for i, item := range []string{"Alpha, Signed in", "no state"} {
 		p, buf := canvas()
 		draw(p, brandTheme(), toolkit.Rect{X: 0, Y: 0, W: 60, H: 44}, i, item, i == 0, toolkit.RGBA{R: 255, G: 255, B: 255, A: 255})
 		if !inked(buf) {
 			t.Errorf("row %d drew nothing", i)
 		}
+	}
+	if a := v.w.serverLogo.A11y(); a.Role != toolkit.RoleImg || a.Name != "Server logo" {
+		t.Errorf("logo a11y %+v", a)
 	}
 }

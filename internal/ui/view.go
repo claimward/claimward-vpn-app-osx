@@ -25,6 +25,7 @@ package ui
 import (
 	"github.com/go-widgets/mvvm"
 	"github.com/go-widgets/mvvmtk"
+	tabler "github.com/go-widgets/tabler-icons"
 	"github.com/go-widgets/toolkit"
 )
 
@@ -46,7 +47,11 @@ const (
 	iconW = 18
 	// tenantLabelW and refreshW are the fixed ends of the tenant row.
 	tenantLabelW = 60
-	refreshW     = 90
+	refreshW     = 110
+	// serverRowH is a server row's least height: a logo and two lines.
+	serverRowH = 44
+	// logH is the connection log's height in the detail panel.
+	logH = 120
 	// The cards' heights, in logical pixels: the sign-in prompt is three rows
 	// and a button row, the removal question a row and a button row.
 	signInCardH = 3*rowH + btnH + 3*4
@@ -60,6 +65,8 @@ var factKeys = [nFacts]string{
 	factURL: "URL", factProvider: "Provider", factAccount: "Account",
 	factExclusive: "Exclusive", factApproval: "Helper approval", factHelper: "Helper",
 	factTenant: "Tenant", factStatus: "Status", factAddress: "Address", factLease: "Lease expires",
+	factDNS: "DNS", factMTU: "MTU", factEndpoint: "Endpoint", factAllowedIPs: "Allowed IPs",
+	factHandshake: "Latest handshake", factTransfer: "Transfer",
 }
 
 // widgets are the View's controls, built once and bound once.
@@ -78,9 +85,10 @@ type widgets struct {
 
 	// The detail panel: the selected server's logo and name, a section title
 	// over its facts (a key and a value each), the status icon, the tenant choice.
-	serverLogo               *logoView
+	serverLogo               *toolkit.Logo
 	serverName               *toolkit.Label
 	serverTitle, ifaceTitle  *toolkit.Label
+	peerTitle                *toolkit.Label
 	keys, values             [nFacts]*toolkit.Label
 	statusIcon               *statusIcon
 	tenantLabel              *toolkit.Label
@@ -106,7 +114,7 @@ type widgets struct {
 	server                               *toolkit.Entry
 	nServer                              *toolkit.Native
 	next, cancel                         *toolkit.Button
-	previewLogo                          *logoView
+	previewLogo                          *toolkit.Logo
 	previewName, previewDetail           *toolkit.Label
 	add, back, cancelPreview             *toolkit.Button
 	editURLLabel, editURL, providerLabel *toolkit.Label
@@ -153,6 +161,7 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 		serverName:   toolkit.NewLabel(""),
 		serverTitle:  toolkit.NewLabel("Server"),
 		ifaceTitle:   toolkit.NewLabel("Interface"),
+		peerTitle:    toolkit.NewLabel("Peer"),
 		tenantLabel:  toolkit.NewLabel("Tenant"),
 		tenantPick:   toolkit.NewDropDown(nil, 0),
 
@@ -197,15 +206,36 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 	for i := range w.signInWith {
 		w.signInWith[i] = toolkit.NewButton("", nil)
 	}
-	w.serverLogo = newLogoView("Server logo", vm.LogoDoc)
-	w.previewLogo = newLogoView("Server logo", vm.PreviewLogoDoc)
+	w.serverLogo = toolkit.NewLogo("Server logo", vm.LogoDoc)
+	w.previewLogo = toolkit.NewLogo("Server logo", vm.PreviewLogoDoc)
 	w.statusIcon = newStatusIcon(func() int { return w.statusKind })
 	w.serverName.SetFontSize(18)
 	w.previewName.SetFontSize(18)
 	w.serverTitle.SetFontSize(15)
 	w.ifaceTitle.SetFontSize(15)
-	w.servers.RowHeight = toolkit.Scaled(44)
-	w.servers.ItemRenderer = serverRow(vm)
+	w.peerTitle.SetFontSize(15)
+	w.servers.RowHeight = toolkit.Scaled(serverRowH)
+	w.servers.ItemRenderer = toolkit.LogoRows(func(i int) toolkit.LogoRow {
+		name, state := splitRow(at(w.servers.Items, i))
+		return toolkit.LogoRow{Doc: vm.RowLogo(i), Title: name, Subtitle: state}
+	})
+	// Nothing the window shows runs past its edge: text wraps to its box.
+	for _, l := range w.wrapped() {
+		l.Wrap = true
+	}
+	for b, icon := range map[*toolkit.Button]string{
+		w.connect: tabler.PlugConnected, w.disconnect: tabler.PlugConnectedX,
+		w.signOut: tabler.Logout, w.edit: tabler.Pencil, w.chooseTenant: tabler.Refresh,
+		w.openPage: tabler.ExternalLink, w.cancelSignIn: tabler.X, w.cancel: tabler.X,
+		w.cancelRemove: tabler.X, w.cancelPreview: tabler.X,
+		w.confirmRemove: tabler.Trash, w.confirmRevoke: tabler.Trash,
+		w.next: tabler.ArrowRight, w.back: tabler.ArrowLeft, w.add: tabler.Plus, w.done: tabler.Check,
+	} {
+		b.LeadingIcon().Set(toolkit.SVGIcon(tabler.MustSVG(icon)))
+	}
+	for _, b := range w.signInWith {
+		b.LeadingIcon().Set(toolkit.SVGIcon(tabler.MustSVG(tabler.Login)))
+	}
 	w.serverPane = toolkit.NewListPane(w.servers, toolkit.ListBarMac)
 	w.serverPane.AccessibleName = "Servers"
 	w.serverPane.Extra = []*toolkit.Button{gearButton()}
@@ -266,7 +296,7 @@ func bindView(vm *ViewModel, mark func(toolkit.Widget), relayout func()) (*widge
 		mvvmtk.BindSelectedIndex(w.provider, vm.ProviderIndex, of(w.nProvider)),
 		mvvm.BindTwoWay(vm.ProviderName, w.nProvider.Text(), of(w.nProvider)),
 		mvvm.BindList(vm.Providers, &w.nProvider.Items, row, of(w.nProvider)),
-		mvvmtk.BindListItems(w.log, vm.Log, row, of(w.log)),
+		mvvmtk.BindListItems(w.log, vm.LogRows, row, of(w.log)),
 
 		mvvmtk.BindEntryText(w.server, vm.ServerURL, of(w.nServer)),
 		// The native control writes the same observable the fallback reads.
@@ -312,183 +342,3 @@ func nativePopUp(key string, items []string, fallback *toolkit.DropDown) *toolki
 
 // visible says whether bit of the shown mask is set.
 func visible(shown, bit int) bool { return shown&(1<<bit) != 0 }
-
-// layout composes the widgets into boxes sized for the current metric
-// scale and for what the panel shows. It is rebuilt when the scale or what is
-// shown changes, never per frame; the widgets and their bindings are untouched
-// by it.
-func layout(w *widgets, c *cards) toolkit.Widget {
-	px := toolkit.Scaled
-	row := func(ws ...toolkit.Widget) *toolkit.HBox {
-		h := toolkit.NewHBox()
-		h.Spacing = px(gap)
-		for _, x := range ws {
-			h.AddFlex(x, 1)
-		}
-		return h
-	}
-	card := func(l *toolkit.CardLayout, pages ...toolkit.Widget) *toolkit.Container {
-		ct := toolkit.NewContainer(l)
-		for _, p := range pages {
-			ct.AddWidget(p)
-		}
-		return ct
-	}
-
-	device := toolkit.NewVBox()
-	device.Spacing = px(4)
-	device.AddFixed(w.deviceHint, px(rowH))
-	device.AddFixed(w.deviceCode, px(rowH))
-	device.AddFixed(w.deviceURI, px(rowH))
-	device.AddFixed(row(w.openPage, w.cancelSignIn), px(btnH))
-
-	// The sidebar: the servers, framed over the bar of their + and − buttons.
-	sidebar := toolkit.NewVBox()
-	sidebar.Spacing = px(4)
-	sidebar.AddFixed(w.serversTitle, px(rowH))
-	sidebar.AddFlex(w.serverPane, 1)
-
-	// A fact: its key at the left, its value (after the icon, for the status).
-	fact := func(i int) *toolkit.HBox {
-		h := toolkit.NewHBox()
-		h.Spacing = px(gap)
-		h.AddFixed(w.keys[i], px(keyW))
-		if i == factStatus {
-			h.AddFixed(w.statusIcon, px(iconW))
-		}
-		h.AddFlex(w.values[i], 1)
-		return h
-	}
-	section := func(d *toolkit.VBox, title *toolkit.Label, first, last int) {
-		d.AddFixed(title, px(rowH))
-		for i := first; i <= last; i++ {
-			if visible(w.shown, i) {
-				d.AddFixed(fact(i), px(factH))
-			}
-		}
-	}
-
-	// The tenant choice on the selected server, and the button that asks the
-	// server for its tenants again.
-	tenantRow := toolkit.NewHBox()
-	tenantRow.Spacing = px(gap)
-	tenantRow.AddFixed(w.tenantLabel, px(keyW))
-	tenantRow.AddFlex(w.nTenant, 1)
-	tenantRow.AddFixed(w.chooseTenant, px(refreshW))
-
-	head := toolkit.NewHBox()
-	head.Spacing = px(gap)
-	head.AddFixed(w.serverLogo, px(titleH))
-	head.AddFlex(w.serverName, 1)
-
-	removal := toolkit.NewVBox()
-	removal.Spacing = px(4)
-	removal.AddFixed(w.removeText, px(rowH))
-	removal.AddFixed(row(w.confirmRemove, w.confirmRevoke, w.cancelRemove), px(btnH))
-
-	// The detail panel: the selected server, then the session, like WireGuard's.
-	detail := toolkit.NewVBox()
-	detail.Spacing = px(2)
-	detail.AddFixed(head, px(titleH))
-	section(detail, w.serverTitle, factURL, factTenant)
-	if visible(w.shown, shownTenant) {
-		detail.AddFixed(tenantRow, px(btnH))
-	}
-	section(detail, w.ifaceTitle, factStatus, factLease)
-	signIn := toolkit.NewHBox()
-	signIn.Spacing = px(gap)
-	signedOut := false
-	for i, b := range w.signInWith {
-		if visible(w.shown, shownProvider+i) {
-			signIn.AddFlex(b, 1)
-			signedOut = true
-		}
-	}
-	if signedOut {
-		detail.AddFixed(signIn, px(btnH))
-	}
-	detail.AddFixed(card(c.signIn, w.blank[0], device), px(signInCardH))
-	detail.AddFixed(row(w.connect, w.disconnect, w.signOut), px(btnH))
-	if visible(w.shown, shownNote) {
-		detail.AddFixed(w.connectNote, px(rowH))
-	}
-	detail.AddFixed(card(c.remove, w.blank[1], removal), px(removeCardH))
-	detail.AddFlex(w.log, 1)
-	strip := toolkit.NewHBox()
-	strip.Spacing = px(gap)
-	strip.AddFlex(w.blank[2], 1)
-	strip.AddFixed(w.edit, px(editW))
-	detail.AddFixed(strip, px(editStripH))
-
-	status := toolkit.NewHBox()
-	status.Spacing = px(2 * gap)
-	status.AddFixed(sidebar, px(sidebarW))
-	status.AddFlex(detail, 1)
-
-	root := toolkit.NewVBox()
-	root.Spacing = px(gap)
-	root.AddFlex(card(c.page, status, serverForm(w, c)), 1)
-	root.AddFixed(w.busy, px(rowH))
-	root.AddFixed(w.message, px(rowH))
-	return toolkit.NewPopoverHost(root)
-}
-
-// serverForm is the server window's content: the address to type, then what
-// the address said, or the entry being edited.
-func serverForm(w *widgets, c *cards) *toolkit.VBox {
-	px := toolkit.Scaled
-	buttons := func(ws ...toolkit.Widget) *toolkit.HBox {
-		h := toolkit.NewHBox()
-		h.Spacing = px(gap)
-		for _, x := range ws {
-			h.AddFlex(x, 1)
-		}
-		return h
-	}
-	urlPage := toolkit.NewVBox()
-	urlPage.Spacing = px(4)
-	urlPage.AddFixed(w.urlLabel, px(rowH))
-	urlPage.AddFixed(w.nServer, px(rowH))
-	urlPage.AddFixed(buttons(w.next, w.cancel), px(btnH))
-
-	name := toolkit.NewHBox()
-	name.Spacing = px(gap)
-	name.AddFixed(w.previewLogo, px(titleH))
-	name.AddFlex(w.previewName, 1)
-	previewPage := toolkit.NewVBox()
-	previewPage.Spacing = px(4)
-	previewPage.AddFixed(name, px(titleH))
-	previewPage.AddFixed(w.previewDetail, px(rowH))
-	previewPage.AddFixed(buttons(w.add, w.back, w.cancelPreview), px(btnH))
-
-	editPage := toolkit.NewVBox()
-	editPage.Spacing = px(4)
-	editPage.AddFixed(w.editURLLabel, px(rowH))
-	editPage.AddFixed(w.editURL, px(rowH))
-	editPage.AddFixed(w.providerLabel, px(rowH))
-	editPage.AddFixed(w.nProvider, px(rowH))
-	editPage.AddFixed(buttons(w.done), px(btnH))
-
-	pages := toolkit.NewContainer(c.form)
-	pages.AddWidget(urlPage)
-	pages.AddWidget(previewPage)
-	pages.AddWidget(editPage)
-
-	form := toolkit.NewVBox()
-	form.Spacing = px(4)
-	form.AddFixed(pages, px(formCardH+rowH))
-	form.AddFixed(w.formMsg, px(2*rowH))
-	form.AddFlex(w.blank[3], 1)
-	return form
-}
-
-// settingsLayout is the server window: the form, then the line that says
-// what happened to the address.
-func settingsLayout(w *widgets, c *cards) toolkit.Widget {
-	px := toolkit.Scaled
-	root := toolkit.NewVBox()
-	root.Spacing = px(gap)
-	root.AddFlex(serverForm(w, c), 1)
-	root.AddFixed(w.message, px(rowH))
-	return toolkit.NewPopoverHost(root)
-}

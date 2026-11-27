@@ -153,6 +153,90 @@ func TestTheDetailPanelsFacts(t *testing.T) {
 	}
 }
 
+// The peer section shows what the live tunnel says, hides what is empty, and
+// its relative time moves on with the clock.
+func TestThePeerFactsShowTheTunnelAndHideTheEmpty(t *testing.T) {
+	now := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	f := twoServers()
+	vm, q := newVM(t, f, WithClock(func() time.Time { return now }))
+	for _, i := range []int{factDNS, factMTU, factEndpoint, factAllowedIPs, factHandshake, factTransfer} {
+		if vm.Facts[i].Get() != "" || shownBit(vm, i) {
+			t.Errorf("%s shows while disconnected: %q", factKeys[i], vm.Facts[i].Get())
+		}
+	}
+	shake := now.Add(-12 * time.Second)
+	f.edit(urlA, func(s *appcore.ServerStatus) {
+		s.Connected, s.AssignedIP, s.Interface = true, "10.80.0.7/32", "Claimward"
+		s.Endpoint, s.AllowedIPs, s.DNS, s.MTU = "vpn.example.org:51820", []string{"10.0.0.0/8", "192.168.0.0/16"}, []string{"10.80.0.1"}, 1420
+		s.RxBytes, s.TxBytes, s.LastHandshake = 3*1024*1024+512*1024, 900, &shake
+	})
+	vm.Refresh()
+	settle(vm, q)
+	for i, want := range map[int]string{
+		factDNS: "10.80.0.1", factMTU: "1420", factEndpoint: "vpn.example.org:51820",
+		factAllowedIPs: "10.0.0.0/8, 192.168.0.0/16", factHandshake: "12 s ago",
+		factTransfer: "3.50 MiB received, 900 B sent",
+	} {
+		if got := vm.Facts[i].Get(); got != want {
+			t.Errorf("%s = %q, want %q", factKeys[i], got, want)
+		}
+		if !shownBit(vm, i) {
+			t.Errorf("%s is hidden", factKeys[i])
+		}
+	}
+	now = now.Add(48 * time.Second)
+	vm.Tick()
+	if got := vm.Facts[factHandshake].Get(); got != "1 min 0 s ago" {
+		t.Errorf("handshake %q a minute on", got)
+	}
+	// A peer that never completed a handshake has no such row.
+	f.edit(urlA, func(s *appcore.ServerStatus) { s.LastHandshake = nil })
+	vm.Refresh()
+	settle(vm, q)
+	if vm.Facts[factHandshake].Get() != "" || shownBit(vm, factHandshake) {
+		t.Error("a handshake row shows with no handshake")
+	}
+}
+
+func TestAgoAndSize(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		0: "just now", 12 * time.Second: "12 s ago", 125 * time.Second: "2 min 5 s ago",
+		2*time.Hour + 3*time.Minute: "2 h 3 min ago",
+	} {
+		if got := ago(d); got != want {
+			t.Errorf("ago(%v) = %q, want %q", d, got, want)
+		}
+	}
+	for n, want := range map[uint64]string{
+		0: "0 B", 1023: "1023 B", 1024: "1.00 KiB", 1536: "1.50 KiB",
+		1 << 20: "1.00 MiB", 5 << 30: "5.00 GiB", 1 << 62: "4.00 EiB",
+	} {
+		if got := size(n); got != want {
+			t.Errorf("size(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
+
+// LogRows is Log through the wrap function: nothing is wider than the log.
+func TestTheLogWrapsToItsRows(t *testing.T) {
+	vm, _ := newVM(t, twoServers())
+	vm.Log.Clear()
+	vm.Log.Append("one", "two words")
+	vm.rewrapLog()
+	if got := vm.LogRows.Slice(); !reflect.DeepEqual(got, []string{"one", "two words"}) {
+		t.Fatalf("unwrapped rows %q", got)
+	}
+	vm.SetLogWrap(func(s string) []string { return strings.Fields(s) })
+	if got := vm.LogRows.Slice(); !reflect.DeepEqual(got, []string{"one", "two", "words"}) {
+		t.Fatalf("wrapped rows %q", got)
+	}
+	vm.rewrapLog() // unchanged: the list is not touched again
+	vm.SetLogWrap(nil)
+	if got := vm.LogRows.Slice(); len(got) != 2 {
+		t.Fatalf("rows %q after the wrap was removed", got)
+	}
+}
+
 func TestRelativeTime(t *testing.T) {
 	for d, want := range map[time.Duration]string{
 		-time.Second:                       "expired",

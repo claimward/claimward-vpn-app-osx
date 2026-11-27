@@ -80,10 +80,17 @@ and is laid out as:
   key/value table with section titles that hides every empty field except
   **Status**. **Server** (name and logo, URL, provider and signed-in identity,
   tenant, exclusive, helper approval), then the **Status** row with its icon and
-  the **Connect** / **Disconnect** buttons, then **Interface** (address, lease
-  expiry in relative time). The values refresh every second. **Edit** is at the
-  bottom right. When the server lists several identity providers, sign-in shows
-  one button per provider.
+  the **Connect** / **Disconnect** buttons, then **Interface** (address, DNS,
+  MTU, lease expiry in relative time) and **Peer** (endpoint, allowed IPs, latest
+  handshake as "12 s ago", transfer as KiB / MiB), each hidden while empty. The
+  values refresh every second. **Edit** is at the bottom right. When the server
+  lists several identity providers, sign-in shows one button per provider.
+- **Icons and long text**: every button carries a Tabler icon
+  (go-widgets/tabler-icons, MIT), and a server's logo is drawn by the toolkit's
+  SVG logo widget. Unlike WireGuard's rows, which truncate, any text wider than
+  its box **wraps**: URLs, identities, routes, refusal reasons and the connection
+  log. Rows grow to hold their lines, and the detail panel scrolls when it is
+  taller than the window, so nothing is clipped or runs past the edge.
 - **Add a server**: **+** opens a window with a URL field only. **Next** asks the
   server for its public discovery document and previews its name, logo,
   providers and whether it is *exclusive*; the person confirms before the server
