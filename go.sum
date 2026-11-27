@@ -1,7 +1,7 @@
 github.com/andybalholm/brotli v1.3.0 h1:IdkhjSe/+34U+fP7FSR2Q6Poj1hnHUa2GoWmzXJd6qY=
 github.com/andybalholm/brotli v1.3.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
-github.com/claimward/claimward-vpn-client v0.12.2 h1:TIbCw2/jS70foFlf3MrbxCiAAwJwNE4wGbh6RVDEhIE=
-github.com/claimward/claimward-vpn-client v0.12.2/go.mod h1:EvtP1sqRLAEcETntojdXPZhF/AcI38TotH7XSGL02JA=
+github.com/claimward/claimward-vpn-client v0.12.3 h1:vaT1oeBiGe4uDY//eXF5ICAWGTSRv/RsvE1PIUF0GoQ=
+github.com/claimward/claimward-vpn-client v0.12.3/go.mod h1:EvtP1sqRLAEcETntojdXPZhF/AcI38TotH7XSGL02JA=
 github.com/coreos/go-oidc/v3 v3.21.0 h1:wZo4Q9Pum8dYEj0eMUPrqR+kvuGkeUplbLpNCkBqoWM=
 github.com/coreos/go-oidc/v3 v3.21.0/go.mod h1:DYCf24+ncYi+XkIH97GY1+dqoRlbaSI26KVTCI9SrY4=
 github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 h1:2tV76y6Q9BB+NEBasnqvs7e49aEBFI8ejC89PSnWH+4=

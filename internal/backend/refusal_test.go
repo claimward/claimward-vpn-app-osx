@@ -12,11 +12,10 @@ import (
 	"github.com/claimward/claimward-vpn-client/pkg/hproto"
 )
 
-// The helper's own texts, as the client composes them ("helper: " + message).
-var (
-	errNotOwned     = errors.New("helper: that tunnel belongs to another user of this machine")
-	errUnidentified = errors.New("helper: cannot identify the caller: no peer credentials")
-)
+// refused is what the client returns for a helper refusal with the code.
+func refused(code string) error {
+	return &helperclient.RefusalError{Code: code, Message: "whatever the helper said"}
+}
 
 func wantRefusal(t *testing.T, err, cause error, code string) {
 	t.Helper()
@@ -28,23 +27,20 @@ func wantRefusal(t *testing.T, err, cause error, code string) {
 		t.Errorf("the helper's own error is lost from %v", err)
 	}
 	msg := err.Error()
-	if msg == "" || strings.Contains(msg, "helper:") || strings.Contains(msg, code) {
+	if msg == "" || strings.HasPrefix(msg, "helper:") || strings.Contains(msg, code) {
 		t.Errorf("message %q is not readable", msg)
 	}
 }
 
+var codes = []string{hproto.ErrNotOwner, hproto.ErrCallerUnidentified}
+
 func TestConnectAndDisconnectTellTheHelpersRefusalsReadably(t *testing.T) {
-	for _, tc := range []struct {
-		cause error
-		code  string
-	}{
-		{errNotOwned, hproto.ErrNotOwner},
-		{errUnidentified, hproto.ErrCallerUnidentified},
-	} {
-		svc := &fakeService{connectErrs: []error{tc.cause}, disconnectErr: tc.cause}
+	for _, code := range codes {
+		cause := refused(code)
+		svc := &fakeService{connectErrs: []error{cause}, disconnectErr: cause}
 		b := newBackend(svc, &fakeHelper{}, nil, nil)
-		wantRefusal(t, b.Connect(context.Background(), srv), tc.cause, tc.code)
-		wantRefusal(t, b.Disconnect(context.Background(), srv), tc.cause, tc.code)
+		wantRefusal(t, b.Connect(context.Background(), srv), cause, code)
+		wantRefusal(t, b.Disconnect(context.Background(), srv), cause, code)
 	}
 	if got := (&Refusal{Code: hproto.ErrNotOwner}).Error(); !strings.Contains(got, "another user") {
 		t.Errorf("not owned: %q", got)
@@ -54,50 +50,42 @@ func TestConnectAndDisconnectTellTheHelpersRefusalsReadably(t *testing.T) {
 	}
 }
 
-func TestOtherFailuresAreLeftAlone(t *testing.T) {
-	boom := errors.New("boom")
-	svc := &fakeService{disconnectErr: boom}
+func TestTheWordsOfTheHelperDecideNothing(t *testing.T) {
+	// The same words without the code are not a refusal this app tells apart.
+	same := errors.New("helper: that tunnel belongs to another user of this machine")
+	svc := &fakeService{connectErrs: []error{same}, disconnectErr: same}
 	b := newBackend(svc, &fakeHelper{}, nil, nil)
-	if err := b.Disconnect(context.Background(), srv); err != boom {
-		t.Errorf("Disconnect: %v", err)
+	if err := b.Connect(context.Background(), srv); err != same {
+		t.Errorf("Connect = %v", err)
 	}
-	if err := b.Disconnect(context.Background(), srv); err != boom {
-		t.Errorf("Disconnect again: %v", err)
+	if err := b.Disconnect(context.Background(), srv); err != same {
+		t.Errorf("Disconnect = %v", err)
 	}
-	svc.disconnectErr = nil
-	if err := b.Disconnect(context.Background(), srv); err != nil {
-		t.Errorf("Disconnect without error: %v", err)
+	// Another code is left as it came.
+	other := refused(hproto.ErrExclusive)
+	svc.disconnectErr = other
+	if err := b.Disconnect(context.Background(), srv); err != other {
+		t.Errorf("Disconnect(exclusive) = %v", err)
 	}
 	// No error is no refusal: asserted, so that a crash cannot pass for it.
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				t.Errorf("explainText(nil) panicked: %v", r)
+				t.Errorf("explain(nil) panicked: %v", r)
 			}
 		}()
-		if err := explainText(nil); err != nil {
-			t.Errorf("explainText(nil) = %v", err)
+		if err := explain(nil); err != nil {
+			t.Errorf("explain(nil) = %v", err)
 		}
 	}()
-	// A known code with no error is not a failure.
-	if err := explainCode(hproto.ErrNotOwner, nil); err != nil {
-		t.Errorf("explainCode(nil) = %v", err)
-	}
-	// A response with another code falls back to the text, then to the error.
-	if err := explain(&hproto.Response{ErrorCode: hproto.ErrExclusive}, boom); err != boom {
-		t.Errorf("explain(exclusive) = %v", err)
-	}
-	wantRefusal(t, explain(&hproto.Response{}, errNotOwned), errNotOwned, hproto.ErrNotOwner)
 }
 
 func TestRevokeTellsTheCodeReadably(t *testing.T) {
-	for _, code := range []string{hproto.ErrNotOwner, hproto.ErrCallerUnidentified} {
-		cause := errors.New("whatever text the helper sent")
-		h := &fakeHelper{revokeErr: cause, code: code}
-		b := newBackend(&fakeService{}, h, nil, nil)
+	for _, code := range codes {
+		cause := refused(code)
+		b := newBackend(&fakeService{}, &fakeHelper{revokeErr: cause}, nil, nil)
 		wantRefusal(t, b.Revoke(context.Background(), srv), cause, code)
 	}
-	// Without a code it is the helper's error as it came.
 	boom := errors.New("boom")
 	b := newBackend(&fakeService{}, &fakeHelper{revokeErr: boom}, nil, nil)
 	if err := b.Revoke(context.Background(), srv); err != boom {
@@ -106,9 +94,9 @@ func TestRevokeTellsTheCodeReadably(t *testing.T) {
 }
 
 func TestApprovingTellsTheCodeReadably(t *testing.T) {
-	cause := errors.New("whatever text the helper sent")
+	cause := refused(hproto.ErrCallerUnidentified)
 	svc := &fakeService{connectErrs: []error{&helperclient.NotApprovedError{Server: srv, Message: "not approved"}}}
-	h := &fakeHelper{approveErr: cause, code: hproto.ErrCallerUnidentified}
+	h := &fakeHelper{approveErr: cause}
 	b := newBackend(svc, h, nil, func(string) ([]byte, error) { return []byte("auth"), nil })
 	wantRefusal(t, b.Connect(context.Background(), srv), cause, hproto.ErrCallerUnidentified)
 }

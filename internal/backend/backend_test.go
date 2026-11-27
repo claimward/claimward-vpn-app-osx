@@ -45,7 +45,6 @@ type fakeHelper struct {
 	approvedErr, statusErr error
 	status                 *hproto.Response
 	approveErr, revokeErr  error
-	code                   string // the error_code Approve and Revoke answer with
 	approves               []string
 	auth                   []byte
 	revokes                []string
@@ -59,11 +58,11 @@ func (h *fakeHelper) Approved() (*hproto.Response, error) { return h.approved, h
 func (h *fakeHelper) Approve(server string, auth []byte) (*hproto.Response, error) {
 	h.approves = append(h.approves, server)
 	h.auth = auth
-	return &hproto.Response{OK: true, ErrorCode: h.code}, h.approveErr
+	return &hproto.Response{OK: true}, h.approveErr
 }
 func (h *fakeHelper) Revoke(server string) (*hproto.Response, error) {
 	h.revokes = append(h.revokes, server)
-	return &hproto.Response{OK: true, ErrorCode: h.code}, h.revokeErr
+	return &hproto.Response{OK: true}, h.revokeErr
 }
 
 // fakeDiscovery answers Get and Logo from fields.
