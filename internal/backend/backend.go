@@ -142,12 +142,17 @@ func (b *Backend) Connect(ctx context.Context, server string) error {
 	err := b.Service.Connect(ctx, server)
 	var na *helperclient.NotApprovedError
 	if !errors.As(err, &na) {
-		return err
+		return explainText(err)
 	}
 	if aerr := b.approve(server, na.Changed); aerr != nil {
 		return aerr
 	}
-	return b.Service.Connect(ctx, server)
+	return explainText(b.Service.Connect(ctx, server))
+}
+
+// Disconnect is the Core's, with the helper's refusals told readably.
+func (b *Backend) Disconnect(ctx context.Context, server string) error {
+	return explainText(b.Service.Disconnect(ctx, server))
 }
 
 // approve obtains the system's authorization, naming the server, and has the
@@ -162,9 +167,13 @@ func (b *Backend) approve(server string, changed bool) error {
 	if err != nil {
 		return fmt.Errorf("%w: you did not approve %s (%v)", ErrNotApproved, host, err)
 	}
-	if _, err := b.helper.Approve(server, auth); err != nil {
+	if resp, err := b.helper.Approve(server, auth); err != nil {
 		if errors.Is(err, helperclient.ErrApprovalDenied) {
 			return fmt.Errorf("%w: the system refused to approve %s", ErrNotApproved, host)
+		}
+		var ref *Refusal
+		if told := explain(resp, err); errors.As(told, &ref) {
+			return told
 		}
 		return fmt.Errorf("approving %s failed: %w", host, err)
 	}
@@ -176,8 +185,8 @@ func (b *Backend) approve(server string, changed bool) error {
 
 // Revoke makes the helper forget the server.
 func (b *Backend) Revoke(_ context.Context, server string) error {
-	if _, err := b.helper.Revoke(server); err != nil {
-		return err
+	if resp, err := b.helper.Revoke(server); err != nil {
+		return explain(resp, err)
 	}
 	b.mu.Lock()
 	delete(b.approved, server)
