@@ -101,4 +101,4 @@ jobs:
           grep -q '^status items: 1' ax.txt
           grep -q '^windows: 1' ax.txt
           grep -q '^title: Claimward VPN' ax.txt
-          grep -q '^settings button: true' ax.txt
+          grep -q '^add button: true' ax.txt
