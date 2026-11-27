@@ -68,6 +68,17 @@ func TestOtherFailuresAreLeftAlone(t *testing.T) {
 	if err := b.Disconnect(context.Background(), srv); err != nil {
 		t.Errorf("Disconnect without error: %v", err)
 	}
+	// No error is no refusal: asserted, so that a crash cannot pass for it.
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("explainText(nil) panicked: %v", r)
+			}
+		}()
+		if err := explainText(nil); err != nil {
+			t.Errorf("explainText(nil) = %v", err)
+		}
+	}()
 	// A known code with no error is not a failure.
 	if err := explainCode(hproto.ErrNotOwner, nil); err != nil {
 		t.Errorf("explainCode(nil) = %v", err)
