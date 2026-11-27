@@ -33,10 +33,7 @@ func (r *Refusal) Unwrap() error { return r.Cause }
 // explain is err as a Refusal when the helper refused with one of the codes
 // above (read with helperclient.CodeOf), err itself otherwise.
 func explain(err error) error {
-	if err == nil {
-		return nil
-	}
-	code := helperclient.CodeOf(err)
+	code := helperclient.CodeOf(err) // "" for nil: not a refusal, err comes back
 	if _, known := refusalText[code]; !known {
 		return err
 	}
