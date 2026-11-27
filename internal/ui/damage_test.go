@@ -10,6 +10,7 @@ import (
 
 	"github.com/claimward/claimward-vpn-client/pkg/appcore"
 	"github.com/claimward/claimward-vpn-client/pkg/hproto"
+	"github.com/claimward/claimward-vpn-client/pkg/protocol"
 )
 
 // host is a window that presents only what DamageRects says changed, the way
@@ -45,25 +46,29 @@ func (o *host) present(v *View) {
 }
 
 func randomStatus(r *rand.Rand) appcore.Status {
-	st := appcore.Status{
-		ConfigOK: r.Intn(8) != 0, HelperInstalled: r.Intn(4) != 0,
-		LoggedIn: r.Intn(3) != 0, ServerURL: "https://vpn.example.org",
-	}
-	if !st.ConfigOK {
-		st.ConfigError = "missing config: server_url"
-	}
-	if st.LoggedIn {
-		st.Email = fmt.Sprintf("user%d@example.org", r.Intn(100))
-		st.Connected = r.Intn(2) == 0
-		if st.Connected {
-			st.AssignedIP, st.Interface = fmt.Sprintf("10.80.0.%d/32", r.Intn(250)), "Claimward"
+	st := appcore.Status{ConfigOK: true, HelperInstalled: r.Intn(4) != 0}
+	for n := r.Intn(4); n > 0; n-- {
+		s := appcore.ServerStatus{
+			URL:       fmt.Sprintf("https://s%d.example.org", n),
+			Name:      fmt.Sprintf("Server %d", r.Intn(10)),
+			Providers: []protocol.Provider{gitHub, campus}[:1+r.Intn(2)],
+			LoggedIn:  r.Intn(3) != 0,
+			Exclusive: r.Intn(4) == 0,
 		}
-		for i := r.Intn(4); i > 0; i-- {
-			st.Tenants = append(st.Tenants, hproto.Tenant{ID: fmt.Sprintf("t%d", i), Name: fmt.Sprintf("Tenant %d", i)})
+		if s.LoggedIn {
+			s.Email = fmt.Sprintf("user%d@example.org", r.Intn(100))
+			s.Connected = r.Intn(2) == 0
+			if s.Connected {
+				s.AssignedIP, s.Interface = fmt.Sprintf("10.80.0.%d/32", r.Intn(250)), "Claimward"
+			}
+			for i := r.Intn(4); i > 0; i-- {
+				s.Tenants = append(s.Tenants, hproto.Tenant{ID: fmt.Sprintf("t%d", i), Name: fmt.Sprintf("Tenant %d", i)})
+			}
+			s.TenantRequired = len(s.Tenants) > 1 && r.Intn(2) == 0
+		} else if r.Intn(3) == 0 {
+			s.DeviceUserCode, s.DeviceVerificationURI = fmt.Sprintf("ABCD-%04d", r.Intn(10000)), "https://github.com/login/device"
 		}
-		st.TenantRequired = len(st.Tenants) > 1 && r.Intn(2) == 0
-	} else if r.Intn(3) == 0 {
-		st.DeviceUserCode, st.DeviceVerificationURI = fmt.Sprintf("ABCD-%04d", r.Intn(10000)), "https://github.com/login/device"
+		st.Servers = append(st.Servers, s)
 	}
 	for i := r.Intn(30); i > 0; i-- {
 		st.Log = append(st.Log, fmt.Sprintf("12:%02d:%02d event %d", r.Intn(60), r.Intn(60), r.Intn(1000)))
@@ -75,6 +80,7 @@ func randomStatus(r *rand.Rand) appcore.Status {
 func show(f *fakeCore, vm *ViewModel, st appcore.Status) {
 	f.set(func(s *appcore.Status) { *s = st })
 	vm.Refresh()
+	vm.Wait()
 }
 
 // After any run of view-model updates, pointer moves, clicks, theme changes
@@ -157,6 +163,7 @@ func TestAChangeIsReportedAsRectangles(t *testing.T) {
 	v.DamageRects()
 	f.set(func(st *appcore.Status) { st.Log = append(st.Log, "12:00:00 something happened") })
 	vm.Refresh()
+	vm.Wait()
 	if !frame(t, v) {
 		t.Fatal("a new log line did not redraw")
 	}
@@ -176,8 +183,7 @@ func TestAChangeIsReportedAsRectangles(t *testing.T) {
 // BenchmarkPresent measures one frame of a window whose log grows by a line:
 // the CPU of painting and finding the damage, and the bytes a host presents.
 func BenchmarkPresent(b *testing.B) {
-	f := signedIn()
-	f.st.Connected = true
+	f := newCore(up(alpha()))
 	q := &Queue{}
 	vm := NewViewModel(f, WithPost(q.Post))
 	v := NewView(vm, q)

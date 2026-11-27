@@ -80,8 +80,10 @@ type View struct {
 	spare     []byte
 	damageAll bool
 	damage    []toolkit.Rect
-	// builtAt is the metric scale the boxes were sized for.
-	builtAt float64
+	// builtAt is the metric scale the boxes were sized for, builtShown the rows
+	// of the detail panel they lay out.
+	builtAt    float64
+	builtShown int
 
 	dirty, relayout atomic.Bool
 	pressed         bool
@@ -135,8 +137,8 @@ func (v *View) Resize(w, h int, _ float64) {
 // arrange (re)builds the boxes when the scale changed, and gives the tree
 // its bounds.
 func (v *View) arrange() {
-	if s := toolkit.MetricScale(); v.root == nil || s != v.builtAt {
-		v.root, v.builtAt = v.build(v.w, v.cards), s
+	if s := toolkit.MetricScale(); v.root == nil || s != v.builtAt || v.w.shown != v.builtShown {
+		v.root, v.builtAt, v.builtShown = v.build(v.w, v.cards), s, v.w.shown
 	}
 	m := toolkit.Scaled(margin)
 	v.root.SetBounds(toolkit.Rect{X: m, Y: m, W: v.width - 2*m, H: v.high - 2*m})

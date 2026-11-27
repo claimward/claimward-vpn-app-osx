@@ -7,19 +7,8 @@ import (
 
 	"github.com/go-widgets/toolkit"
 
-	"github.com/claimward/claimward-vpn-client/pkg/appcore"
+	"github.com/claimward/claimward-vpn-client/pkg/hproto"
 )
-
-// settingsControls opens the settings page and returns what the host embeds.
-func settingsControls(t *testing.T, provider string) (*View, *ViewModel, []toolkit.NativeControl) {
-	t.Helper()
-	f := signedOut()
-	f.cfg = appcore.Config{Provider: provider}
-	v, vm := newTestView(t, f)
-	click(t, v, v.w.settings)
-	frame(t, v)
-	return v, vm, v.NativeControls()
-}
 
 func keys(cs []toolkit.NativeControl) []string {
 	var out []string
@@ -54,18 +43,16 @@ func same(a []string, b ...string) bool {
 	return true
 }
 
-// Every input on the page being shown is one native control: a text field for
-// each text input, a pop-up button for the identity provider. The controls of
-// the panels that are not shown are still described, marked not Visible, so
-// the host keeps its control hidden and finds it again by Key.
-func TestNativeControlsAreOneControlPerShownInput(t *testing.T) {
-	_, _, cs := settingsControls(t, "github")
-	if got := keys(cs); !same(got, "server_url", "provider", "github_client_id") {
-		t.Fatalf("github provider: native controls %v", got)
-	}
-	// Four text inputs, the provider pop-up and the tenant pop-up.
-	if len(cs) != 6 {
-		t.Fatalf("%d native controls described, want one per input (6)", len(cs))
+// Every input is one native control; the ones of the panels that are not shown
+// are still described, marked not Visible, so the host keeps its control hidden
+// and finds it again by Key.
+func TestNativeControlsAreOneControlPerInput(t *testing.T) {
+	f := signedIn()
+	f.offered = []hproto.Tenant{{ID: "chem"}, {ID: "hpc"}}
+	v, vm := newTestView(t, f)
+	cs := v.NativeControls()
+	if len(cs) != 2 || len(keys(cs)) != 0 {
+		t.Fatalf("status page: %d controls, shown %v", len(cs), keys(cs))
 	}
 	for _, c := range cs {
 		want := toolkit.NativeEntry
@@ -73,27 +60,37 @@ func TestNativeControlsAreOneControlPerShownInput(t *testing.T) {
 			want = toolkit.NativePopUp
 		}
 		if c.Kind != want {
-			t.Fatalf("%q: kind %v, want %v", c.Key, c.Kind, want)
-		}
-		if c.Visible && (c.Rect.W <= 0 || c.Rect.H <= 0) {
-			t.Fatalf("%q: visible but unplaced %+v", c.Key, c.Rect)
+			t.Errorf("%q: kind %v, want %v", c.Key, c.Kind, want)
 		}
 	}
-	if control(t, cs, "tenant").Visible {
-		t.Fatal("the tenant pop-up is shown with no tenant to choose")
+	// The tenant pop-up is shown once the server asks for a choice.
+	clickAndSettle(t, v, vm, v.w.connect)
+	cs = v.NativeControls()
+	if got := keys(cs); !same(got, "tenant") {
+		t.Fatalf("tenant asked: %v", got)
 	}
-	if got := control(t, cs, "provider").Items; !same(got, providerLabels()...) {
-		t.Fatalf("provider items %v", got)
+	if c := control(t, cs, "tenant"); c.Rect.W <= 0 || c.Rect.H <= 0 {
+		t.Errorf("visible but unplaced %+v", c.Rect)
 	}
-	_, _, cs = settingsControls(t, "oidc")
-	if got := keys(cs); !same(got, "server_url", "provider", "oidc_issuer", "oidc_client_id") {
-		t.Fatalf("oidc provider: native controls %v", got)
+	control(t, cs, "tenant").OnText("hpc")
+	settleView(t, v, vm)
+	if c := f.last("SetTenant"); c.arg != "hpc" {
+		t.Fatalf("SetTenant %+v", c)
+	}
+
+	// The address form shows its entry; editing shows the provider pop-up.
+	vm.AddServer.Execute()
+	settleView(t, v, vm)
+	if got := keys(v.NativeControls()); !same(got, "server_url") {
+		t.Fatalf("add form: %v", got)
 	}
 }
 
 func TestNativeTextReachesTheViewModelAndBack(t *testing.T) {
-	v, vm, cs := settingsControls(t, "github")
-	control(t, cs, "server_url").OnText("https://other.example.org")
+	v, vm := newTestView(t, signedIn())
+	vm.AddServer.Execute()
+	settleView(t, v, vm)
+	control(t, v.NativeControls(), "server_url").OnText("https://other.example.org")
 	if got := vm.ServerURL.Get(); got != "https://other.example.org" {
 		t.Fatalf("view model server %q", got)
 	}
@@ -104,31 +101,40 @@ func TestNativeTextReachesTheViewModelAndBack(t *testing.T) {
 	if got := control(t, v.NativeControls(), "server_url").Text; got != "https://third.example.org" {
 		t.Fatalf("native control %q", got)
 	}
+	if !v.NeedsPresent() {
+		t.Error("text typed in the native control did not ask for a repaint")
+	}
 }
 
-// Choosing a provider in the pop-up switches the panel under it, and the
-// pop-up follows the view model back.
+// Choosing a provider in the pop-up chooses it, and the pop-up follows back.
 func TestNativeProviderPopUpChoosesTheProvider(t *testing.T) {
-	v, vm, cs := settingsControls(t, "github")
-	control(t, cs, "provider").OnText(Providers[1].Label)
-	if got := vm.ProviderIndex.Get(); got != 1 {
-		t.Fatalf("provider index %d", got)
+	f := twoServers()
+	v, vm := newTestView(t, f)
+	vm.ServerIndex.Set(1)
+	settleView(t, v, vm)
+	clickAndSettle(t, v, vm, v.w.edit)
+	cs := v.NativeControls()
+	if got := keys(cs); !same(got, "provider") {
+		t.Fatalf("edit form: %v of %+v (card %d page %d)", got, cs, vm.FormCard.Get(), vm.PageShown.Get())
 	}
-	frame(t, v)
-	cs = v.NativeControls()
-	if got := keys(cs); !same(got, "server_url", "provider", "oidc_issuer", "oidc_client_id") {
-		t.Fatalf("after choosing OIDC: %v", got)
+	if got := control(t, cs, "provider").Items; !same(got, "GitHub", "Campus") {
+		t.Fatalf("provider items %v", got)
 	}
-	vm.ProviderIndex.Set(0)
-	if got := control(t, v.NativeControls(), "provider").Text; got != Providers[0].Label {
+	control(t, cs, "provider").OnText("Campus")
+	settleView(t, v, vm)
+	if c := f.last("SetProvider"); c.server != urlB || c.arg != "campus" {
+		t.Fatalf("SetProvider %+v", c)
+	}
+	if got := control(t, v.NativeControls(), "provider").Text; got != "Campus" {
 		t.Fatalf("pop-up shows %q", got)
 	}
 }
 
 func TestClaimingStandsTheFallbackDown(t *testing.T) {
-	v, _, cs := settingsControls(t, "github")
-	frame(t, v)
-	control(t, cs, "server_url").OnClaim(true)
+	v, vm := newTestView(t, signedIn())
+	vm.AddServer.Execute()
+	settleView(t, v, vm)
+	control(t, v.NativeControls(), "server_url").OnClaim(true)
 	if !v.w.nServer.Claimed().Get() {
 		t.Fatal("OnClaim did not claim the region")
 	}

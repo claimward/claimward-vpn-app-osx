@@ -3,6 +3,7 @@
 -- (View.A11yElements publishes them). CI greps the output (see
 -- .github/workflows/ci.yml, job launch). It only reads; it never clicks.
 --
+-- It looks for the servers list's "Add" button (the + of the sidebar).
 -- hack/axpress.applescript is the other half: it presses the painted
 -- "Settings" button through AXPress and checks the page changed.
 tell application "System Events"
@@ -27,10 +28,10 @@ tell application "System Events"
 			try
 				set end of labels to (name of e)
 			end try
-			if r is "AXButton" and labels contains "Settings" then set found to true
+			if r is "AXButton" and labels contains "Add" then set found to true
 			set out to out & "element: " & r & " | " & (labels as text) & linefeed
 		end repeat
-		set out to out & "settings button: " & found & linefeed
+		set out to out & "add button: " & found & linefeed
 	end tell
 end tell
 return out

@@ -29,7 +29,7 @@ v0.1.0); it still needs the helper installed, see below.
 ```
 
 - **The app** is one unprivileged process that owns all state and talks to the
-  helper. The text inputs (server URL, client IDs) are the system's
+  helper. The text input (the server URL) is the system's
   `NSTextField`, with its input method and spell checking; the identity-provider
   and tenant choices are `NSPopUpButton`s. The painted widgets under them are the
   fallback a host that cannot embed controls shows. Only changed rectangles are
@@ -39,7 +39,7 @@ v0.1.0); it still needs the helper installed, see below.
   binary they are logged instead.
 - **Privileged helper** is the only component that runs as root. The app sends
   it a *connect* request over a Unix socket (server URL, bearer, device key,
-  tenant); the helper enrolls with that server — only if `helper.json` names it —
+  tenant); the helper enrolls with that server — only if it is named in `helper.json` or approved —
   creates the `utun` device and brings the WireGuard tunnel up/down via
   `wireguard-go` (`claimward-vpn-client/pkg/helper`, `pkg/wgtun`), and watches
   the route pushes.
@@ -69,19 +69,34 @@ Closing the window hides it: the app keeps running in the menu-bar status item
 and quits only through its **Quit** item. **Open Claimward** brings the window
 back (one main window, never a second).
 
-The window (760 x 600, the brand's deep teal) is laid out as:
+The window opens at 800 x 480 points, the size of WireGuard's macOS manager,
+and is laid out as:
 
-- **Header**: the white Claimward mark, the title and **Settings**.
-- **Servers sidebar** (left): the configured servers, one row each (named by
-  host), with **+** and **−** under the list. **+** opens the server settings;
-  **−** stays disabled until the configuration holds more than one server.
-- **Detail panel** (right): the selected server's name, its **Tenant** pop-up
-  with a **Refresh** button, the session state, the sign-in card, Sign in /
-  Sign out, Connect / Disconnect and the connection log.
-- **Settings window**: the settings form (server URL, identity provider and
-  its fields, Save / Cancel) opens in a second window, so the status stays
-  visible. Save, Cancel or closing that window ends the edit; where a second
-  window cannot be opened, the form shows in the main window instead.
+- **Servers sidebar** (left): one row per server, with its logo (a neutral mark
+  when the server has none), its name and its state (Connected, Signed in,
+  Signed out). **+**, **−** and the gear are under the list. Several servers may
+  be connected at once.
+- **Detail panel** (right), in the manner of WireGuard's tunnel panel: a
+  key/value table with section titles that hides every empty field except
+  **Status**. **Server** (name and logo, URL, provider and signed-in identity,
+  tenant, exclusive, helper approval), then the **Status** row with its icon and
+  the **Connect** / **Disconnect** buttons, then **Interface** (address, lease
+  expiry in relative time). The values refresh every second. **Edit** is at the
+  bottom right. When the server lists several identity providers, sign-in shows
+  one button per provider.
+- **Add a server**: **+** opens a window with a URL field only. **Next** asks the
+  server for its public discovery document and previews its name, logo,
+  providers and whether it is *exclusive*; the person confirms before the server
+  is added. A server that does not answer as a Claimward server is told in plain
+  words. The gear (or **Edit**) opens the same window on the selected server and
+  can change its identity provider.
+- **Approval**: Connect on a server the helper has not approved asks macOS for
+  the administrator's authorization, naming the server's host, then approves it
+  and connects. A refusal is shown as such. **−** offers to revoke the approval
+  with the removal.
+- **Exclusive servers** (one that must be the only connection, or a connection
+  that blocks the others): Connect is disabled and says why, for instance
+  "Alpha is connected and exclusive".
 
 ## Quick start (Task)
 
@@ -110,43 +125,14 @@ CGO_ENABLED=0 go build -o bin/claimward-helper  ./cmd/claimward-helper
 
 ## Configure
 
-Create `~/Library/Application Support/Claimward/config.json` (or use the
-`CLAIMWARD_SERVER`, `CLAIMWARD_AUTH_PROVIDER`, `CLAIMWARD_GITHUB_CLIENT_ID`,
-`CLAIMWARD_OIDC_ISSUER`, `CLAIMWARD_OIDC_CLIENT_ID`, `CLAIMWARD_HELPER_SOCKET`).
-The Settings window edits the same file. `server_url` must be one of
-the servers the helper was installed with. **GitHub is the default provider** (OAuth device flow):
-
-```json
-{
-  "server_url": "https://vpn.example.com",
-  "provider": "github",
-  "github_client_id": "Iv1.0123456789abcdef"
-}
-```
-
-To use an OIDC provider instead:
-
-```json
-{
-  "server_url": "https://vpn.example.com",
-  "provider": "oidc",
-  "oidc_issuer": "https://accounts.google.com",
-  "oidc_client_id": "xxxx.apps.googleusercontent.com"
-}
-```
-
-Or a [go-authn](https://github.com/go-authn/bridge) provider, an OpenID Connect
-provider in front of a SAML federation such as RENATER, which also keeps whose
-each WireGuard key is (the server runs with `AUTH_PROVIDER=go-authn`):
-
-```json
-{
-  "server_url": "https://vpn.example.com",
-  "provider": "go-authn",
-  "oidc_issuer": "https://login.example.org",
-  "oidc_client_id": "claimward"
-}
-```
+There is nothing to write by hand: **+** adds a server by its URL. The server
+publishes everything else (its name, logo and identity providers: GitHub, OIDC,
+[go-authn](https://github.com/go-authn/bridge), ...) in its discovery document,
+and the app keeps the list in `~/Library/Application Support/Claimward/config.json`
+(version 2, claimward-vpn-client v0.11.0). **A v0.9 file** (`server_url`,
+`provider`, `github_client_id`, ...) **is migrated once, on first start**, and
+its session is adopted by the matching server. `CLAIMWARD_HELPER_SOCKET` still
+names the helper's socket.
 
 Sign-in is the provider's device flow. At every connection the app registers
 the device's **public** key there (the private key stays in the session store),
@@ -169,11 +155,17 @@ menu bar that the server refuses for want of a choice opens the window.
 
 ## Security
 
-- **The helper enrolls only with the servers named at install**
-  (`/Library/Application Support/Claimward/helper.json`, root's, writable by
-  root alone). It runs as root, and anything that can reach its socket could
-  otherwise point it at a server of its own, answering with routes for every
-  packet of the machine. It takes no tunnel configuration from a request.
+- **The helper enrolls only with the servers it trusts**: the ones named at
+  install (`/Library/Application Support/Claimward/helper.json`, root's, writable
+  by root alone) and the ones **approved** since. It runs as root, and anything
+  that can reach its socket could otherwise point it at a server of its own,
+  answering with routes for every packet of the machine. Approving asks macOS for
+  an administrator's authorization (Authorization Services right
+  `com.claimward.helper.approve-server`; the app's `macauth.Obtain` token buys one
+  approval and the helper verifies and destroys it), and the approvals are kept in
+  `/var/db/claimward/approved-servers.json` with a digest of the server's
+  identity: a server that changes its identity must be approved again. It takes
+  no tunnel configuration from a request.
 - **Its socket, `/var/run/claimward-helper.sock`, is `0660`, `root:admin`.**
   Before v0.1.0 it was `0666`, so any local process could drive it.
 - There is no local HTTP server and no handoff token any more (before v0.7.0 the

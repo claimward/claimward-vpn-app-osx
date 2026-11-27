@@ -17,15 +17,27 @@ import (
 	"os"
 	"time"
 
+	"github.com/claimward/claimward-vpn-app-osx/internal/backend"
 	"github.com/claimward/claimward-vpn-app-osx/internal/brand"
 	"github.com/claimward/claimward-vpn-app-osx/internal/ui"
 	"github.com/claimward/claimward-vpn-client/pkg/appcore"
+	"github.com/claimward/claimward-vpn-client/pkg/discovery"
+	"github.com/claimward/claimward-vpn-client/pkg/helperclient"
+	"github.com/claimward/claimward-vpn-client/pkg/macauth"
 	"github.com/go-widgets/application"
 	"github.com/go-widgets/tray"
 )
 
 // windowTitle names the window.
 const windowTitle = "Claimward VPN"
+
+// The main window's content size in points: WireGuard's macOS manager opens at
+// 800 by 480 (AppDelegate.swift, setContentSize). application honours Config.Height
+// from go-widgets/application v0.17.0; before, it opened screen-tall.
+const (
+	contentWidth  = 800
+	contentHeight = 480
+)
 
 // version is set at build time (-ldflags "-X main.version=...").
 var version = "dev"
@@ -42,7 +54,7 @@ func main() {
 // the platform has no second window: the form then stays in the main window.
 func openSettingsWindow(vm *ui.ViewModel, queue *ui.Queue, open func(application.WindowConfig, application.Handler) (*application.Window, error)) (func(), bool) {
 	sv := ui.NewSettingsView(vm, queue)
-	w, err := open(application.WindowConfig{Title: "Server settings", Width: 440, Height: 400}, sv)
+	w, err := open(application.WindowConfig{Title: "Server", Width: 480, Height: 300}, sv)
 	if err != nil {
 		log.Printf("claimward-app: settings window: %v (showing the form in the main window)", err)
 		sv.Close()
@@ -62,9 +74,12 @@ func run() error {
 		// An unreadable config starts the app unconfigured, on the Settings
 		// page, rather than not at all: it is how the person repairs it.
 		log.Printf("claimward-app: load %s: %v (starting unconfigured)", appcore.ConfigPath(), err)
-		cfg = &appcore.Config{Provider: "github"}
+		cfg = &appcore.Config{}
 	}
-	core := appcore.New(cfg)
+	// The core, plus what the app adds: the helper's approval of a server (the
+	// system's own authorization dialog), the preview of a server before it is
+	// added, and the helper's leases.
+	core := backend.New(appcore.New(cfg), helperclient.New(cfg.SocketPath), discovery.New(nil), macauth.Obtain)
 
 	queue := &ui.Queue{}
 	var vm *ui.ViewModel
@@ -89,6 +104,13 @@ func run() error {
 
 	vm.Start()
 	defer vm.Stop()
+	// What changes with the clock (a lease's relative time) is refreshed every
+	// second, as WireGuard's panel does.
+	go func() {
+		for range time.Tick(time.Second) {
+			queue.Post(vm.Tick)
+		}
+	}()
 
 	t := tray.New(brand.TrayTemplate).SetTooltip("Claimward")
 	// Closing the window hides it (Config.HideOnClose): the app keeps running in
@@ -114,7 +136,7 @@ func run() error {
 	spec := application.Spec{Name: "Claimward", Identifier: "com.claimward.app", Version: version}
 	// Menu gives the menu bar the standard Edit menu: without it Cut, Copy and
 	// Paste have no menu route in the embedded text fields.
-	cfgApp := application.Config{Title: windowTitle, Width: 760, Height: 600, HideOnClose: true, Menu: tray.NewMenu().Add(tray.EditMenu())}
+	cfgApp := application.Config{Title: windowTitle, Width: contentWidth, Height: contentHeight, HideOnClose: true, Menu: tray.NewMenu().Add(tray.EditMenu())}
 	return application.Run(spec, cfgApp, view, func() {
 		// The status item joins once the window's loop runs. It is not a
 		// Spec.Tray because that builds its menu once, and the binding above
