@@ -8,9 +8,9 @@ require (
 	github.com/go-widgets/application v0.17.1
 	github.com/go-widgets/mvvm v0.15.0
 	github.com/go-widgets/mvvmtk v0.16.0
-	github.com/go-widgets/painter v0.20.3
+	github.com/go-widgets/painter v0.22.0
 	github.com/go-widgets/tabler-icons v0.2.0
-	github.com/go-widgets/toolkit v0.406.0
+	github.com/go-widgets/toolkit v0.414.0
 	github.com/go-widgets/tray v0.18.1
 )
 
