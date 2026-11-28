@@ -1,7 +1,7 @@
 github.com/andybalholm/brotli v1.3.0 h1:IdkhjSe/+34U+fP7FSR2Q6Poj1hnHUa2GoWmzXJd6qY=
 github.com/andybalholm/brotli v1.3.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
-github.com/claimward/claimward-vpn-client v0.12.0 h1:KZ00C9qdbEZ7FWiqxtrC2Oi8ekC7rdvYn7d1BcvH3Ss=
-github.com/claimward/claimward-vpn-client v0.12.0/go.mod h1:EvtP1sqRLAEcETntojdXPZhF/AcI38TotH7XSGL02JA=
+github.com/claimward/claimward-vpn-client v0.12.3 h1:vaT1oeBiGe4uDY//eXF5ICAWGTSRv/RsvE1PIUF0GoQ=
+github.com/claimward/claimward-vpn-client v0.12.3/go.mod h1:EvtP1sqRLAEcETntojdXPZhF/AcI38TotH7XSGL02JA=
 github.com/coreos/go-oidc/v3 v3.21.0 h1:wZo4Q9Pum8dYEj0eMUPrqR+kvuGkeUplbLpNCkBqoWM=
 github.com/coreos/go-oidc/v3 v3.21.0/go.mod h1:DYCf24+ncYi+XkIH97GY1+dqoRlbaSI26KVTCI9SrY4=
 github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 h1:2tV76y6Q9BB+NEBasnqvs7e49aEBFI8ejC89PSnWH+4=
@@ -73,10 +73,10 @@ github.com/go-widgets/tabler-icons v0.2.0 h1:rZ7cxbM2a2qYtp1SjNB1NAFJxJSrUUUqJ1c
 github.com/go-widgets/tabler-icons v0.2.0/go.mod h1:kqxbNtKsFi2KoY29MO6MgnTT4obem3BsVP2tEUqOS9I=
 github.com/go-widgets/textinput v0.1.1 h1:3NZD5CJm5XYSWA3YzQ64tXC86gnEQ0UlNPL5qJeIUSs=
 github.com/go-widgets/textinput v0.1.1/go.mod h1:Y/k3PDtUEMQ/4psCVKdmUStNWa/EsVAMcCKG2lEtQ5c=
-github.com/go-widgets/toolkit v0.404.0 h1:4R7s8tmneW1gct1j/YxwjwC1ODjJzJHX+D9hd/LjHys=
-github.com/go-widgets/toolkit v0.404.0/go.mod h1:kH9kV37fxqGKjUT2V/eWaclyxUy46mixatJ2OLE/FpM=
-github.com/go-widgets/tray v0.17.1 h1:CQzQagefofdCvfqm4yn2iqdZUC5PsuwBHMo+UzbbvaQ=
-github.com/go-widgets/tray v0.17.1/go.mod h1:xfQHJYivkiZ6DMN4fPNnePBUj+JxRUy9u2D0/E9zOGk=
+github.com/go-widgets/toolkit v0.406.0 h1:E/G3aISLUZeSbLJa4L7rjm0/XpxLNwCOQnLbBoP8pKQ=
+github.com/go-widgets/toolkit v0.406.0/go.mod h1:kH9kV37fxqGKjUT2V/eWaclyxUy46mixatJ2OLE/FpM=
+github.com/go-widgets/tray v0.18.0 h1:odf8dsOmzCBIeIvBZzwUwCfN5UXabGzJp71X6UIwcVc=
+github.com/go-widgets/tray v0.18.0/go.mod h1:xfQHJYivkiZ6DMN4fPNnePBUj+JxRUy9u2D0/E9zOGk=
 github.com/go-widgets/vcs v0.1.0 h1:1pZQygSsKBWZepAgsTdqh1bwHBjPwaLM4p7bAAONGnk=
 github.com/go-widgets/vcs v0.1.0/go.mod h1:c2SbtsVVLJUJAf/vOeMKkFWZRFyMAeDrY8rfyUyIevs=
 github.com/go-widgets/webcanvas v0.14.1 h1:FKCY96ERrfLGX2D6QZmUGZ32qbwlAPFOMidkuY3E3UM=

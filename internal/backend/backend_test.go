@@ -24,7 +24,10 @@ type fakeService struct {
 	st            appcore.Status
 	connectErrs   []error
 	connects      []string
+	disconnectErr error
 }
+
+func (f *fakeService) Disconnect(context.Context, string) error { return f.disconnectErr }
 
 func (f *fakeService) Status() appcore.Status { return f.st }
 

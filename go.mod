@@ -3,15 +3,15 @@ module github.com/claimward/claimward-vpn-app-osx
 go 1.27.4
 
 require (
-	github.com/claimward/claimward-vpn-client v0.12.0
+	github.com/claimward/claimward-vpn-client v0.12.3
 	github.com/go-macos/objc v0.13.0
 	github.com/go-widgets/application v0.17.0
 	github.com/go-widgets/mvvm v0.15.0
 	github.com/go-widgets/mvvmtk v0.16.0
 	github.com/go-widgets/painter v0.20.3
 	github.com/go-widgets/tabler-icons v0.2.0
-	github.com/go-widgets/toolkit v0.404.0
-	github.com/go-widgets/tray v0.17.1
+	github.com/go-widgets/toolkit v0.406.0
+	github.com/go-widgets/tray v0.18.0
 )
 
 require (
