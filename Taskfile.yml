@@ -31,19 +31,15 @@ tasks:
     desc: Build the app
     cmds:
       - go build -o {{.BIN}}/{{.APP}} ./cmd/claimward-app
-    sources:
-      - "**/*.go"
-    generates:
-      - "{{.BIN}}/{{.APP}}"
+    # No sources/generates: go-task's fingerprint knew nothing of go.mod, go.sum
+    # or the embedded assets, and answered "up to date" after a dependency bump.
+    # go build's own cache decides, and is a no-op when nothing changed.
 
   build:helper:
     desc: Build the privileged helper
     cmds:
       - go build -o {{.BIN}}/{{.HELPER}} ./cmd/claimward-helper
-    sources:
-      - "**/*.go"
-    generates:
-      - "{{.BIN}}/{{.HELPER}}"
+    # No sources/generates; see build:app.
 
   build:
     desc: Build the app and the helper
